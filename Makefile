@@ -14,9 +14,9 @@ setup-lite:
 	$(PY) -m claimverifier setup --config configs/lite.yaml
 
 train-rationale:    ## fine-tune SciBERT rationale selector (GPU recommended)
-	$(PY) -m claimverifier train-rationale --config $(CONFIG) --neg-ratio 4 --retrieval-negatives 3
+	$(PY) -m claimverifier train-rationale --config $(CONFIG) --neg-ratio 4 --lr 3e-5
 train-nli:          ## fine-tune DeBERTa-v3 NLI on SciFact (GPU recommended)
-	$(PY) -m claimverifier train-nli --config $(CONFIG) --retrieval-negatives 3
+	$(PY) -m claimverifier train-nli --config $(CONFIG) --retrieval-negatives 2
 calibrate:
 	$(PY) -m claimverifier calibrate --config $(CONFIG) --split train
 evaluate:

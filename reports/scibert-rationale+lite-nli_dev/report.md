@@ -1,38 +1,38 @@
-# ClaimVerifier AI - evaluation of 'lite' on SciFact dev
+# ClaimVerifier AI - evaluation of 'scibert-rationale+lite-nli' on SciFact dev
 
 ## Components
 
 - **retrieval**: `{"embedder": "lsa", "dim": 384, "index": "flat", "hybrid_bm25": true, "rrf_weights": {"dense": 0.0, "bm25": 1.0}}`
-- **rationale**: `{"method": "features", "embedder": {"embedder": "lsa", "dim": 384}}`
+- **rationale**: `{"method": "scibert", "model": "models/scibert-rationale"}`
 - **nli**: `{"method": "lite", "stance_only": true}`
-- **decision**: `{"threshold": 0.65, "nei_weight": 0.75, "calibrated": true}`
+- **decision**: `{"threshold": 0.5, "nei_weight": 1.0, "calibrated": false}`
 - **explanation**: `{"backend": "none"}`
 
-Claims evaluated: **300** (Supported: 124, Contradicted: 64, Insufficient Evidence: 112); 40.4 ms/claim.
+Claims evaluated: **300** (Supported: 124, Contradicted: 64, Insufficient Evidence: 112); 5443.2 ms/claim.
 
 ## Verdict classification (claim level)
 
 | Metric | Value |
 |---|---|
-| Accuracy | 52.3 |
-| Macro Precision | 47.2 |
-| Macro Recall | 46.5 |
-| Macro F1 | 45.7 |
-| Weighted F1 | 50.2 |
+| Accuracy | 63.3 |
+| Macro Precision | 60.6 |
+| Macro Recall | 57.7 |
+| Macro F1 | 57.9 |
+| Weighted F1 | 62.1 |
 
 | Class | Precision | Recall | F1 | Support |
 |---|---|---|---|---|
-| Supported | 54.2 | 67.7 | 60.2 | 124 |
-| Contradicted | 32.3 | 15.6 | 21.1 | 64 |
-| Insufficient Evidence | 55.3 | 56.2 | 55.8 | 112 |
+| Supported | 59.8 | 79.0 | 68.1 | 124 |
+| Contradicted | 45.0 | 28.1 | 34.6 | 64 |
+| Insufficient Evidence | 77.1 | 66.1 | 71.2 | 112 |
 
 Confusion matrix (rows = gold, columns = predicted):
 
 | | Supported | Contradicted | Insufficient Evidence |
 |---|---|---|---|
-| **Supported** | 84 | 13 | 27 |
-| **Contradicted** | 30 | 10 | 24 |
-| **Insufficient Evidence** | 41 | 8 | 63 |
+| **Supported** | 98 | 14 | 12 |
+| **Contradicted** | 36 | 18 | 10 |
+| **Insufficient Evidence** | 30 | 8 | 74 |
 
 ## Evidence retrieval (188 claims with gold evidence abstracts)
 
@@ -47,6 +47,6 @@ Confusion matrix (rows = gold, columns = predicted):
 
 | | Precision | Recall | F1 |
 |---|---|---|---|
-| Label-only | 39.2 | 18.2 | 24.8 |
-| Rationalized | 34.0 | 15.8 | 21.6 |
-| Sentence selection | 40.0 | 14.8 | 21.6 |
+| Label-only | 31.9 | 49.8 | 38.9 |
+| Rationalized | 29.1 | 45.5 | 35.5 |
+| Sentence selection | 37.2 | 56.3 | 44.8 |

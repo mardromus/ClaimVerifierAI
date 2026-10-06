@@ -161,7 +161,10 @@ class ClaimVerifier:
     def components(self) -> Dict[str, Dict]:
         return {
             "retrieval": {**self.retriever.embedder.describe(), "index": self.cfg.retrieval.index_type,
-                          "hybrid_bm25": self.retriever.bm25 is not None},
+                          "hybrid_bm25": self.retriever.bm25 is not None,
+                          **({"rrf_weights": {"dense": self.cfg.retrieval.dense_weight,
+                                              "bm25": self.cfg.retrieval.bm25_weight}}
+                             if self.retriever.bm25 is not None else {})},
             "rationale": self.rationale.describe(),
             "nli": self.nli.describe(),
             "decision": {"threshold": self.cfg.rationale.threshold, "nei_weight": self.cfg.aggregation.nei_weight,

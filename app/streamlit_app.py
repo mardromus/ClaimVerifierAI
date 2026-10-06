@@ -210,11 +210,15 @@ def render_reports():
                      "Recall@1": round(100 * r["recall@1"], 1), "Recall@5": round(100 * r["recall@5"], 1),
                      "Recall@20": round(100 * r["recall@20"], 1), "MRR": round(r["mrr"], 3),
                      "abstract F1 (label)": round(100 * a["label_only"]["f1"], 1)})
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    try:
+        st.dataframe(rows, width="stretch", hide_index=True)
+    except TypeError:  # Streamlit < 1.46
+        st.dataframe(rows, use_container_width=True, hide_index=True)
     choice = st.selectbox("Report details", [p.parent.name for p in reports])
     report_md = ROOT / "reports" / choice / "report.md"
     if report_md.exists():
-        st.markdown(report_md.read_text())
+        text = re.sub(r"^(#+) ", lambda m: "#" * min(len(m.group(1)) + 2, 6) + " ", report_md.read_text(), flags=re.M)
+        st.markdown(text)
 
 
 # ---------------------------------------------------------------------------- page

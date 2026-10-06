@@ -9,6 +9,8 @@ Unlike a search engine that only lists related papers, it combines semantic retr
 natural-language inference and LLM-generated explanations into a transparent, evidence-based verdict:
 every decision can be traced back to specific sentences in specific papers.
 
+![ClaimVerifier AI web interface](docs/screenshot.png)
+
 It is built on the open **[SciFact](https://github.com/allenai/scifact)** dataset (Wadden et al., EMNLP 2020):
 5,183 research abstracts and 1,409 expert-written claims annotated with SUPPORT / CONTRADICT labels and
 rationale sentences.
@@ -23,9 +25,10 @@ rationale sentences.
 | Explanation (RAG) | **Qwen 2.5 Instruct** or **Llama 3 Instruct** | Short explanation grounded in the evidence, with `[n]` citations |
 | Evaluation | Accuracy, Precision, Recall, F1, **Recall@K**, **MRR**, SciFact abstract-level F1 | Retrieval and verification quality |
 
-An **offline "lite" pipeline** (TF-IDF/LSA + FAISS + BM25 retrieval, scikit-learn evidence and stance models,
-template explanations) runs with no PyTorch and no model downloads. Every transformer component also falls back
-to its lite counterpart automatically if it is unavailable.
+An **offline "lite" pipeline** (BM25 retrieval with TF-IDF/LSA vectors in FAISS, scikit-learn evidence and stance
+models, template explanations) runs with no PyTorch and no model downloads. The SciBERT, DeBERTa-v3 and LLM
+components fall back automatically to these lightweight counterparts when they are unavailable (for example,
+before SciBERT has been fine-tuned).
 
 ---
 
@@ -96,14 +99,25 @@ python -m claimverifier verify --config configs/lite.yaml \
 python -m claimverifier setup --config configs/default.yaml
 
 # Fine-tune SciBERT for evidence-sentence selection (minutes on a GPU, about an hour on a CPU).
-python -m claimverifier train-rationale --config configs/default.yaml --neg-ratio 4 --retrieval-negatives 3
+python -m claimverifier train-rationale --config configs/default.yaml --neg-ratio 4 --lr 3e-5
 
 # Optional: adapt DeBERTa-v3 NLI to scientific claims (without this the MNLI/FEVER/ANLI model is used zero-shot).
-python -m claimverifier train-nli --config configs/default.yaml --retrieval-negatives 3
+python -m claimverifier train-nli --config configs/default.yaml --retrieval-negatives 2
 
 # Re-tune the decision threshold for the new models on the train split, then evaluate on dev.
 python -m claimverifier calibrate --config configs/default.yaml --split train
 python -m claimverifier evaluate  --config configs/default.yaml --split dev
+```
+
+**SciBERT-only pipeline** (`configs/scibert.yaml`): BM25 retrieval, a SciBERT evidence selector and a SciBERT
+claim verifier, both fine-tuned on SciFact. It needs only the SciBERT download and gave the best results measured
+here (see [Results](#results)):
+
+```bash
+python -m claimverifier setup --config configs/scibert.yaml --no-calibrate
+python -m claimverifier train-rationale --config configs/scibert.yaml --neg-ratio 4 --lr 3e-5
+python -m claimverifier train-nli --config configs/scibert.yaml --retrieval-negatives 2 --lr 3e-5 --batch-size 16 --grad-accum 1
+python -m claimverifier evaluate --config configs/scibert.yaml --split dev
 ```
 
 `configs/large.yaml` uses larger models (`multi-qa-mpnet-base-cos-v1`, `DeBERTa-v3-large`, `Llama-3-8B-Instruct`)
@@ -159,7 +173,49 @@ Any config value can be overridden from the command line, e.g.
 
 ## Results
 
-RESULTS_PLACEHOLDER
+All numbers are on the **SciFact dev split** (300 claims: 124 Supported, 64 Contradicted, 112 Insufficient
+Evidence), which is never used for training or tuning. Training and calibration use the train split only. The full reports
+(per-class scores, confusion matrices, predictions) are in [`reports/`](reports).
+
+These runs come from a CPU-only environment where the Hugging Face Hub was not reachable. SciBERT weights were
+available (from AI2's S3 mirror), but Sentence-BERT, DeBERTa-v3 and Qwen/Llama were not, so the `default` and `large`
+configurations are not benchmarked here. Run `python -m claimverifier evaluate --config configs/default.yaml` to add
+them; the report is written to `reports/default_dev/` and shown in the UI.
+
+### Claim verification (Supported / Contradicted / Insufficient Evidence)
+
+| Configuration | Evidence selection | Verification | Accuracy | Macro P | Macro R | Macro F1 |
+|---|---|---|---|---|---|---|
+| Majority class (always *Supported*) | – | – | 41.3 | 13.8 | 33.3 | 19.5 |
+| `lite` (offline, calibrated on train) | logistic regression on features | lexical stance model | 52.3 | 47.2 | 46.5 | 45.7 |
+| `scibert`, with the lite stance model | **SciBERT** (fine-tuned) | lexical stance model | 63.3 | 60.6 | 57.7 | 57.9 |
+| `scibert` | **SciBERT** (fine-tuned) | **SciBERT** verifier (fine-tuned) | **66.3** | **63.8** | **64.1** | **63.7** |
+
+SciFact abstract-level F1 (label-only / rationalized): lite 24.8 / 21.6, SciBERT rationale + lite stance 38.9 / 35.5,
+full SciBERT 40.1 / 36.6. Per-class F1 of the full SciBERT pipeline: Supported 68.4, Contradicted 47.8,
+Insufficient Evidence 74.8 (it runs uncalibrated: threshold 0.5, NEI weight 1.0).
+
+### Evidence retrieval (188 dev claims with gold evidence abstracts)
+
+| Retriever | Recall@1 | Recall@3 | Recall@5 | Recall@10 | Recall@20 | MRR |
+|---|---|---|---|---|---|---|
+| LSA dense embeddings + FAISS | 40.4 | 54.0 | 66.9 | 76.5 | 84.6 | 0.532 |
+| LSA + BM25, reciprocal-rank fusion | 55.4 | 68.8 | 78.7 | 85.3 | 91.0 | 0.661 |
+| **BM25** (used by `lite` / `scibert`) | **69.0** | **80.1** | **86.6** | **91.6** | **93.8** | **0.776** |
+
+LSA vectors are too coarse to help BM25 on SciFact, whose claims share precise terms with their source abstracts. The
+fusion weight was therefore set to 0 using the **train** split. Sentence-BERT embeddings are much stronger dense
+representations, and `default.yaml` fuses them with BM25 at equal RRF weights. Check this on your setup with
+`python -m claimverifier evaluate --config configs/default.yaml --retrieval-only` (add `--split train` when tuning
+`retrieval.dense_weight`).
+
+### Components
+
+* **SciBERT rationale selector**: sentence-level F1 **0.691** (P 0.698, R 0.683) on dev evidence and cited
+  abstracts, after 2 epochs (1 h on a 3-thread CPU, negatives down-sampled to 4:1).
+* **SciBERT claim verifier** (3-way, on dev claim–evidence pairs including hard negatives from retrieved abstracts):
+  accuracy **81.1%**, macro-F1 **0.706** (1,172 pairs; best of 3 epochs, 48 min on a 3-thread CPU).
+* **Lite stance model** (Supported vs. Contradicted given gold evidence): accuracy 67.6%, macro-F1 0.612.
 
 ---
 
@@ -197,7 +253,9 @@ claimverifier/
   evaluation/              Metrics, end-to-end evaluation and reports, calibration
   api.py, cli.py           FastAPI service and command-line interface
 app/streamlit_app.py       Web UI
-configs/                   default.yaml (transformers), large.yaml (GPU), lite.yaml (offline)
+configs/                   default.yaml (SBERT + SciBERT + DeBERTa-v3 + Qwen), large.yaml (GPU),
+                           scibert.yaml (BM25 + SciBERT x2), lite.yaml (offline)
+docs/screenshot.png        Web UI screenshot
 reports/                   Evaluation reports
 tests/                     pytest suite (runs on a bundled mini SciFact corpus; transformer paths use tiny local models)
 ```

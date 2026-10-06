@@ -1,0 +1,44 @@
+# Full transformer pipeline (CPU works; a GPU makes training and explanation much faster).
+#   Retrieval   : Sentence-BERT (all-MiniLM-L6-v2) + FAISS, fused with BM25
+#   Rationale   : SciBERT cross-encoder fine-tuned on SciFact   (python -m claimverifier train-rationale)
+#   Verification: DeBERTa-v3 NLI (MNLI/FEVER/ANLI), optionally fine-tuned on SciFact (train-nli)
+#   Explanation : Qwen2.5-1.5B-Instruct (swap for Llama 3 below)
+name: default
+artifacts_dir: artifacts/default
+device: auto
+
+data:
+  data_dir: data/scifact
+
+retrieval:
+  embedder: sbert
+  model_name: sentence-transformers/all-MiniLM-L6-v2
+  index_type: flat
+  top_k: 5
+  hybrid: true
+
+rationale:
+  method: scibert
+  model_path: models/scibert-rationale
+  base_model: allenai/scibert_scivocab_uncased
+  fallbacks: [features, similarity]   # used until SciBERT has been fine-tuned
+  threshold: 0.5
+  max_sentences: 3
+
+nli:
+  method: transformer
+  model_name: MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli
+  finetuned_path: models/deberta-v3-scifact   # used automatically once `train-nli` has run
+  fallbacks: [lite]
+  max_length: 512
+
+aggregation:
+  nei_weight: 1.0
+
+explanation:
+  backend: transformers                  # transformers | ollama | openai | template | none
+  model_name: Qwen/Qwen2.5-1.5B-Instruct # or meta-llama/Meta-Llama-3-8B-Instruct (gated, needs HF login)
+  ollama_model: llama3.1:8b              # for backend: ollama  (`ollama pull llama3.1:8b`)
+  max_new_tokens: 256
+  temperature: 0.2
+  fallback_to_template: true

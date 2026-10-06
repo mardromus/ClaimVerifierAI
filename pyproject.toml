@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claimverifier"
+version = "1.0.0"
+description = "Scientific claim verification with semantic retrieval, scientific NLI and LLM-generated explanations (SciFact)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "faiss-cpu>=1.7.4",
+    "rank-bm25>=0.2.2",
+    "pyyaml>=6.0",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+transformers = [
+    "torch>=2.1",
+    "transformers>=4.41",
+    "sentence-transformers>=2.7",
+    "accelerate>=0.30",
+    "sentencepiece>=0.1.99",
+    "protobuf>=4.25",
+]
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "streamlit>=1.35"]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[project.scripts]
+claimverifier = "claimverifier.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["claimverifier*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

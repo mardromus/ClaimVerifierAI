@@ -1,0 +1,34 @@
+# Offline / CPU-only configuration: no PyTorch and no model downloads.
+#   Retrieval   : TF-IDF + truncated SVD (LSA) embeddings + FAISS, fused with BM25
+#   Rationale   : logistic regression over similarity / lexical / positional features
+#   Verification: logistic regression over n-gram and negation / direction cue features
+#   Explanation : deterministic extractive template with citations
+# Set it up with: python -m claimverifier setup --config configs/lite.yaml
+name: lite
+artifacts_dir: artifacts/lite
+device: cpu
+
+retrieval:
+  embedder: lsa
+  lsa_dim: 384
+  index_type: flat
+  top_k: 5
+  hybrid: true
+
+rationale:
+  method: features
+  fallbacks: [similarity]
+  threshold: 0.5
+  max_sentences: 3
+  similarity_center: 0.35
+  similarity_scale: 10.0
+
+nli:
+  method: lite
+  fallbacks: []
+
+aggregation:
+  nei_weight: 1.0
+
+explanation:
+  backend: template

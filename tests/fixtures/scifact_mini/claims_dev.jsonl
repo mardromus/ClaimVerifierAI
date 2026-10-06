@@ -1,0 +1,6 @@
+{"id": 21, "claim": "Vitamin D supplementation prevents fractures in older adults.", "evidence": {"102": [{"sentences": [2], "label": "CONTRADICT"}]}, "cited_doc_ids": [102]}
+{"id": 22, "claim": "A Mediterranean diet is associated with slower cognitive decline.", "evidence": {"110": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [110]}
+{"id": 23, "claim": "Early antibiotic exposure increases the risk of asthma in children.", "evidence": {"109": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [109]}
+{"id": 24, "claim": "Sleep deprivation improves memory consolidation.", "evidence": {"107": [{"sentences": [2], "label": "CONTRADICT"}]}, "cited_doc_ids": [107]}
+{"id": 25, "claim": "Vitamin D supplementation causes kidney stones.", "evidence": {}, "cited_doc_ids": [102]}
+{"id": 26, "claim": "Exercise reduces depressive symptoms in adolescents.", "evidence": {}, "cited_doc_ids": [103]}

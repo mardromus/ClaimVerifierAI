@@ -1,0 +1,29 @@
+# Higher-accuracy configuration for a GPU (>= 16 GB recommended).
+name: large
+artifacts_dir: artifacts/large
+device: auto
+
+retrieval:
+  embedder: sbert
+  model_name: sentence-transformers/multi-qa-mpnet-base-cos-v1
+  max_seq_length: 384
+  top_k: 5
+  hybrid: true
+
+rationale:
+  method: scibert
+  model_path: models/scibert-rationale
+  fallbacks: [features, similarity]
+  threshold: 0.5
+  max_sentences: 3
+
+nli:
+  method: transformer
+  model_name: MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli
+  finetuned_path: models/deberta-v3-large-scifact
+  fallbacks: [lite]
+
+explanation:
+  backend: transformers
+  model_name: meta-llama/Meta-Llama-3-8B-Instruct   # alternatively Qwen/Qwen2.5-7B-Instruct
+  max_new_tokens: 300

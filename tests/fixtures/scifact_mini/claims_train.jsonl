@@ -1,0 +1,16 @@
+{"id": 1, "claim": "Regular aspirin use reduces the risk of colorectal cancer.", "evidence": {"101": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [101]}
+{"id": 2, "claim": "Aspirin use increases the risk of colorectal cancer.", "evidence": {"101": [{"sentences": [2], "label": "CONTRADICT"}]}, "cited_doc_ids": [101]}
+{"id": 3, "claim": "Exercise training increases insulin sensitivity in type 2 diabetes.", "evidence": {"103": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [103]}
+{"id": 4, "claim": "Exercise training decreases insulin sensitivity in patients with diabetes.", "evidence": {"103": [{"sentences": [2], "label": "CONTRADICT"}]}, "cited_doc_ids": [103]}
+{"id": 5, "claim": "Smoking increases the risk of COPD.", "evidence": {"104": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [104]}
+{"id": 6, "claim": "Smoking cessation accelerates lung function decline.", "evidence": {"104": [{"sentences": [3], "label": "CONTRADICT"}]}, "cited_doc_ids": [104]}
+{"id": 7, "claim": "Obesity is associated with lower gut microbial diversity.", "evidence": {"105": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [105]}
+{"id": 8, "claim": "Statins reduce major cardiovascular events in people without heart disease.", "evidence": {"106": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [106]}
+{"id": 9, "claim": "Statin therapy does not reduce the rate of stroke.", "evidence": {"106": [{"sentences": [3], "label": "CONTRADICT"}]}, "cited_doc_ids": [106]}
+{"id": 10, "claim": "Sleep deprivation impairs memory recall.", "evidence": {"107": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [107]}
+{"id": 11, "claim": "Coffee drinking is associated with a lower risk of Parkinson disease.", "evidence": {"108": [{"sentences": [2], "label": "SUPPORT"}]}, "cited_doc_ids": [108]}
+{"id": 12, "claim": "Antibiotics in infancy decrease the risk of childhood asthma.", "evidence": {"109": [{"sentences": [2], "label": "CONTRADICT"}]}, "cited_doc_ids": [109]}
+{"id": 13, "claim": "Statins cause muscle damage in most patients.", "evidence": {}, "cited_doc_ids": [106]}
+{"id": 14, "claim": "Coffee consumption improves sleep quality.", "evidence": {}, "cited_doc_ids": [108]}
+{"id": 15, "claim": "The gut microbiome determines response to chemotherapy.", "evidence": {}, "cited_doc_ids": [105]}
+{"id": 16, "claim": "Aspirin prevents migraine headaches.", "evidence": {}, "cited_doc_ids": [101]}

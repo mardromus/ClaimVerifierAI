@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Data, indexes and trained weights (re-created by the CLI)
+data/
+artifacts/
+models/
+*.faiss
+*.joblib
+*.safetensors
+*.bin
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+._*
+
+# Streamlit
+.streamlit/secrets.toml

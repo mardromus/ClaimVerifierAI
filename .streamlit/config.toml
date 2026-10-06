@@ -1,0 +1,14 @@
+[server]
+# The default file watcher walks every imported module, which triggers lazy imports inside
+# `transformers` (and noisy errors for optional vision dependencies). Restart to pick up code changes.
+fileWatcherType = "none"
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#2457c5"
+
+[client]
+toolbarMode = "minimal"

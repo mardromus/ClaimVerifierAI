@@ -1,0 +1,14 @@
+# Minimal install for the offline "lite" configuration (configs/lite.yaml):
+# no PyTorch, no model downloads. Retrieval = TF-IDF/LSA + FAISS + BM25,
+# rationale selection and NLI = scikit-learn models trained on SciFact.
+numpy>=1.24
+scikit-learn>=1.3
+faiss-cpu>=1.7.4
+rank-bm25>=0.2.2
+pyyaml>=6.0
+tqdm>=4.65
+fastapi>=0.110
+uvicorn>=0.29
+streamlit>=1.35
+pytest>=8.0
+httpx>=0.27

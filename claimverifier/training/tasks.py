@@ -93,20 +93,26 @@ def nli_head_mapping(model_name: str) -> Optional[Dict[str, int]]:
 
 
 def train_nli_model(cfg: Config, base_model: Optional[str] = None, output_dir: Optional[str] = None,
-                    args: Optional[TrainingArgs] = None, balanced: bool = True) -> Dict:
+                    args: Optional[TrainingArgs] = None, balanced: bool = True, retrieval_negatives: int = 0) -> Dict:
     """Fine-tune an NLI model (default: DeBERTa-v3 MNLI/FEVER/ANLI) on SciFact claim-evidence pairs.
 
     If the base model already has an entailment/neutral/contradiction head, it is kept (transfer
     from MNLI); otherwise a new SUPPORTED/CONTRADICTED/INSUFFICIENT_EVIDENCE head is trained.
+    ``retrieval_negatives=k`` adds INSUFFICIENT_EVIDENCE examples from each claim's top-k retrieved abstracts.
     """
     corpus, train_claims, dev_claims = _load_data(cfg)
-    base_model = base_model or cfg.nli.model_name
+    base_model = base_model or cfg.nli.base_model or cfg.nli.model_name
     output_dir = output_dir or cfg.nli.finetuned_path
     args = args or TrainingArgs(max_length=256, learning_rate=1e-5, epochs=3, batch_size=8, grad_accum=2)
     args.device = resolve_device(args.device)
 
-    train = build_nli_examples(train_claims, corpus, include_title=cfg.nli.include_title, seed=args.seed)
-    dev = build_nli_examples(dev_claims, corpus, include_title=cfg.nli.include_title, seed=args.seed)
+    train_ret = dev_ret = None
+    if retrieval_negatives > 0:
+        train_ret, dev_ret = _retrieved_negatives(cfg, corpus, [train_claims, dev_claims], retrieval_negatives)
+    train = build_nli_examples(train_claims, corpus, include_title=cfg.nli.include_title, seed=args.seed,
+                               retrieved=train_ret)
+    dev = build_nli_examples(dev_claims, corpus, include_title=cfg.nli.include_title, seed=args.seed,
+                             retrieved=dev_ret)
     logger.info("NLI examples: train=%d %s, dev=%d %s", len(train), dict(Counter(e.label for e in train)),
                 len(dev), dict(Counter(e.label for e in dev)))
 

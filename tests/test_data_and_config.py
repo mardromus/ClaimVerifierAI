@@ -57,7 +57,7 @@ def test_config_defaults_and_overrides(tmp_path):
 
 
 def test_shipped_configs_parse():
-    for name in ("default", "lite", "large"):
+    for name in ("default", "lite", "large", "scibert"):
         cfg = load_config(f"configs/{name}.yaml")
         assert cfg.name == name
 

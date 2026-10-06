@@ -85,8 +85,9 @@ def cmd_setup(args):
     download_scifact(cfg.data.data_dir)
     cmd_index(args)
     cmd_train_lite(args)
-    args.split, args.limit = "train", None
-    cmd_calibrate(args)
+    if not args.no_calibrate:
+        args.split, args.limit = "train", None
+        cmd_calibrate(args)
     print("Setup complete. Try: python -m claimverifier verify --config", args.config or "<config>", '"<claim>"')
 
 
@@ -118,7 +119,8 @@ def cmd_train_nli(args):
     cfg = _cfg(args)
     ta = _training_args(args, {"max_length": 256, "learning_rate": 1e-5, "epochs": 3, "batch_size": 8,
                                "grad_accum": 2})
-    info = train_nli_model(cfg, args.base_model, args.output, ta, balanced=not args.no_balance)
+    info = train_nli_model(cfg, args.base_model, args.output, ta, balanced=not args.no_balance,
+                           retrieval_negatives=args.retrieval_negatives)
     print(json.dumps({k: info[k] for k in ("best_epoch", "best_score", "history")}, indent=2))
 
 
@@ -174,10 +176,15 @@ def cmd_verify(args):
 
 def cmd_evaluate(args):
     from .data.scifact import load_claims
-    from .evaluation.evaluate import evaluate, markdown_report, save_report
+    from .evaluation.evaluate import evaluate, evaluate_retrieval, markdown_report, save_report
     from .pipeline import ClaimVerifier
 
     cfg = _cfg(args)
+    if args.retrieval_only:
+        claims = load_claims(cfg.data.data_dir, args.split)[: args.limit]
+        _, retriever = _load_retriever(cfg)
+        print(json.dumps(evaluate_retrieval(retriever, claims)["evidence_retrieval"], indent=2))
+        return
     if not args.explain:
         cfg.explanation.backend = "none"
     verifier = ClaimVerifier.from_config(cfg)
@@ -217,6 +224,7 @@ def cmd_serve(args):
 
     import uvicorn
 
+    os.environ["CLAIMVERIFIER_EAGER"] = "1"
     if args.config:
         os.environ["CLAIMVERIFIER_CONFIG"] = args.config
     if args.set:
@@ -246,8 +254,10 @@ def build_parser() -> argparse.ArgumentParser:
         .set_defaults(func=cmd_index)
     sub.add_parser("train-lite", parents=[common], help="train the lightweight rationale + NLI models") \
         .set_defaults(func=cmd_train_lite)
-    sub.add_parser("setup", parents=[common], help="download + index + train-lite + calibrate") \
-        .set_defaults(func=cmd_setup)
+    p = sub.add_parser("setup", parents=[common], help="download + index + train-lite + calibrate")
+    p.add_argument("--no-calibrate", action="store_true",
+                   help="skip calibration (it runs the full pipeline over the train split)")
+    p.set_defaults(func=cmd_setup)
 
     for name, func, helptext in (("train-rationale", cmd_train_rationale, "fine-tune SciBERT rationale selector"),
                                  ("train-nli", cmd_train_nli, "fine-tune DeBERTa-v3 NLI on SciFact")):
@@ -265,10 +275,10 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "train-rationale":
             p.add_argument("--neg-ratio", type=float, default=None,
                            help="down-sample negatives to this many per positive (faster training)")
-            p.add_argument("--retrieval-negatives", type=int, default=0, metavar="K",
-                           help="add each claim's top-K retrieved abstracts as hard negatives")
         else:
             p.add_argument("--no-balance", action="store_true", help="disable class-balanced loss")
+        p.add_argument("--retrieval-negatives", type=int, default=0, metavar="K",
+                       help="add each claim's top-K retrieved abstracts as hard negatives")
         p.set_defaults(func=func)
 
     p = sub.add_parser("verify", parents=[common], help="verify one or more claims (args or stdin)")
@@ -284,6 +294,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--top-k", type=int, default=None)
     p.add_argument("--explain", action="store_true", help="also generate explanations (slow)")
+    p.add_argument("--retrieval-only", action="store_true", help="only report Recall@K / MRR")
     p.add_argument("--out", default=None)
     p.set_defaults(func=cmd_evaluate)
 

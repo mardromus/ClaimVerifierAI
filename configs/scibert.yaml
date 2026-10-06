@@ -1,0 +1,41 @@
+# SciBERT-only pipeline: no Sentence-BERT / DeBERTa / LLM downloads; only SciBERT is fine-tuned.
+#   Retrieval   : BM25 (+ LSA vectors in FAISS for similarity features), as in lite.yaml
+#   Rationale   : SciBERT cross-encoder fine-tuned on SciFact rationales
+#   Verification: SciBERT fine-tuned as a 3-way claim verifier (SUPPORTED / CONTRADICTED / INSUFFICIENT)
+#   Explanation : template (switch to transformers / ollama for an LLM)
+# Setup:
+#   python -m claimverifier setup --config configs/scibert.yaml --no-calibrate
+#   python -m claimverifier train-rationale --config configs/scibert.yaml --neg-ratio 4 --lr 3e-5
+#   python -m claimverifier train-nli --config configs/scibert.yaml --retrieval-negatives 2 --lr 3e-5 \
+#       --batch-size 16 --grad-accum 1
+name: scibert
+artifacts_dir: artifacts/scibert
+device: auto
+
+retrieval:
+  embedder: lsa
+  lsa_dim: 384
+  top_k: 5
+  hybrid: true
+  dense_weight: 0.0
+  bm25_weight: 1.0
+
+rationale:
+  method: scibert
+  model_path: models/scibert-rationale
+  base_model: allenai/scibert_scivocab_uncased
+  fallbacks: [features, similarity]
+  threshold: 0.5
+  max_sentences: 3
+  max_length: 128
+
+nli:
+  method: transformer
+  model_name: models/scibert-verifier
+  finetuned_path: models/scibert-verifier
+  base_model: allenai/scibert_scivocab_uncased
+  fallbacks: [lite]
+  max_length: 256
+
+explanation:
+  backend: template

@@ -35,3 +35,18 @@ def test_cli_evaluate(lite_verifier, lite_cfg, tmp_path, capsys):
     main(["evaluate", "--config", _write_cfg(lite_cfg, tmp_path), "--split", "dev", "--out", str(out_dir)])
     assert "Verdict classification" in capsys.readouterr().out
     assert json.loads((out_dir / "metrics.json").read_text())["num_claims"] == 6
+
+
+def test_cli_retrieval_only(lite_verifier, lite_cfg, tmp_path, capsys):
+    main(["evaluate", "--config", _write_cfg(lite_cfg, tmp_path), "--split", "dev", "--retrieval-only"])
+    out = capsys.readouterr().out
+    metrics = json.loads(out[out.index("{"):])
+    assert metrics["num_queries"] == 4 and 0 < metrics["mrr"] <= 1
+
+
+def test_shipped_scibert_config_uses_base_model():
+    from claimverifier.config import load_config
+
+    cfg = load_config("configs/scibert.yaml")
+    assert cfg.nli.base_model == "allenai/scibert_scivocab_uncased"
+    assert cfg.nli.finetuned_path == cfg.nli.model_name == "models/scibert-verifier"

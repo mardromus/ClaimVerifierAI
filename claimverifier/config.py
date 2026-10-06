@@ -70,6 +70,8 @@ class NLIConfig:
     model_name: str = "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
     # If this directory exists (created by `claimverifier train-nli`) it is used instead of model_name.
     finetuned_path: str = "models/deberta-v3-scifact"
+    # Checkpoint that `train-nli` starts from (default: model_name).
+    base_model: Optional[str] = None
     fallbacks: List[str] = field(default_factory=lambda: ["lite"])
     max_length: int = 512
     batch_size: int = 16

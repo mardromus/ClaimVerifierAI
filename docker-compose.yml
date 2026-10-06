@@ -1,0 +1,31 @@
+# docker compose run --rm setup   # one-off: download SciFact, build the index, train lite models, calibrate
+# docker compose up api ui        # REST API on :8000, web UI on :8501
+x-common: &common
+  build: .
+  image: claimverifier
+  environment:
+    CLAIMVERIFIER_CONFIG: ${CLAIMVERIFIER_CONFIG:-configs/default.yaml}
+    HF_TOKEN: ${HF_TOKEN:-}
+  volumes:
+    - ./data:/app/data
+    - ./artifacts:/app/artifacts
+    - ./models:/app/models
+    - ./reports:/app/reports
+    - hf-cache:/app/.cache/huggingface
+
+services:
+  setup:
+    <<: *common
+    profiles: ["setup"]
+    command: sh -c "python -m claimverifier setup --config $${CLAIMVERIFIER_CONFIG}"
+  api:
+    <<: *common
+    ports: ["8000:8000"]
+    command: sh -c "python -m claimverifier serve --config $${CLAIMVERIFIER_CONFIG} --host 0.0.0.0 --port 8000"
+  ui:
+    <<: *common
+    ports: ["8501:8501"]
+    command: streamlit run app/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+
+volumes:
+  hf-cache:

@@ -19,9 +19,11 @@ import logging
 import os
 import random
 import threading
+from contextlib import asynccontextmanager
 from typing import List, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -64,8 +66,21 @@ def _default_config_path() -> Optional[str]:
     return "configs/default.yaml" if os.path.exists("configs/default.yaml") else None
 
 
-def create_app(verifier=None, config_path: Optional[str] = None) -> FastAPI:
-    app = FastAPI(title="ClaimVerifier AI", version=__version__,
+def create_app(verifier=None, config_path: Optional[str] = None, eager: Optional[bool] = None) -> FastAPI:
+    """``eager`` loads the models at startup (default: env ``CLAIMVERIFIER_EAGER=1``, set by ``serve``)."""
+    if eager is None:
+        eager = os.environ.get("CLAIMVERIFIER_EAGER", "0") == "1"
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        if eager and state["verifier"] is None:
+            try:
+                await run_in_threadpool(get_verifier)
+            except HTTPException:
+                pass  # reported by /health; requests will return 503
+        yield
+
+    app = FastAPI(title="ClaimVerifier AI", version=__version__, lifespan=lifespan,
                   description="Scientific claim verification with retrieval-augmented NLI and LLM explanations.")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     state = {"verifier": verifier, "error": None}

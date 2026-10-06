@@ -17,6 +17,17 @@ from .metrics import classification_metrics, retrieval_metrics, scifact_abstract
 logger = logging.getLogger(__name__)
 
 
+def evaluate_retrieval(retriever, claims: List[Claim], ks: Sequence[int] = (1, 3, 5, 10, 20), depth: int = 100,
+                       batch_size: int = 32) -> Dict:
+    """Recall@K / MRR against gold evidence abstracts (and against all cited abstracts)."""
+    texts = [c.claim for c in claims]
+    ranked = []
+    for start in range(0, len(texts), batch_size):
+        ranked.extend(retriever.rank_doc_ids(texts[start:start + batch_size], depth=depth))
+    return {"evidence_retrieval": retrieval_metrics(ranked, [set(c.gold_doc_ids) for c in claims], ks),
+            "evidence_retrieval_cited_docs": retrieval_metrics(ranked, [set(c.cited_doc_ids) for c in claims], ks)}
+
+
 def evaluate(verifier, claims: List[Claim], ks: Sequence[int] = (1, 3, 5, 10, 20), depth: int = 100,
              batch_size: int = 32, top_k: Optional[int] = None, explain: bool = False) -> Dict:
     """Evaluate retrieval (Recall@K, MRR), verdict classification (Acc/P/R/F1) and SciFact abstract-level F1."""
@@ -25,11 +36,8 @@ def evaluate(verifier, claims: List[Claim], ks: Sequence[int] = (1, 3, 5, 10, 20
     t0 = time.time()
 
     # Retrieval quality (independent of top_k used for verification).
-    ranked = []
-    for start in range(0, len(texts), batch_size):
-        ranked.extend(verifier.retriever.rank_doc_ids(texts[start:start + batch_size], depth=depth))
-    retrieval = retrieval_metrics(ranked, [set(c.gold_doc_ids) for c in claims], ks)
-    retrieval_cited = retrieval_metrics(ranked, [set(c.cited_doc_ids) for c in claims], ks)
+    ret = evaluate_retrieval(verifier.retriever, claims, ks, depth, batch_size)
+    retrieval, retrieval_cited = ret["evidence_retrieval"], ret["evidence_retrieval_cited_docs"]
 
     # Verification.
     results = []

@@ -1,5 +1,5 @@
 # Offline / CPU-only configuration: no PyTorch and no model downloads.
-#   Retrieval   : TF-IDF + truncated SVD (LSA) embeddings + FAISS, fused with BM25
+#   Retrieval   : BM25 ranking; TF-IDF + truncated SVD (LSA) embeddings in FAISS for similarity features
 #   Rationale   : logistic regression over similarity / lexical / positional features
 #   Verification: logistic regression over n-gram and negation / direction cue features
 #   Explanation : deterministic extractive template with citations
@@ -14,6 +14,11 @@ retrieval:
   index_type: flat
   top_k: 5
   hybrid: true
+  # Tuned on the SciFact *train* split (`evaluate --split train --retrieval-only`): the LSA dense ranking
+  # does not improve on BM25 (MRR 0.671 hybrid vs 0.798 BM25), so ranking uses BM25 only. The LSA vectors
+  # in FAISS are still used for the rationale features and the displayed cosine similarity.
+  dense_weight: 0.0
+  bm25_weight: 1.0
 
 rationale:
   method: features

@@ -180,8 +180,9 @@ class TransformersChatLLM(LLMBackend):
 
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to(self.device)
+        pad_id = self.tokenizer.pad_token_id
         gen_kwargs = {"max_new_tokens": max_new_tokens, "do_sample": temperature > 0,
-                      "pad_token_id": self.tokenizer.pad_token_id or self.tokenizer.eos_token_id}
+                      "pad_token_id": pad_id if pad_id is not None else self.tokenizer.eos_token_id}
         if temperature > 0:
             gen_kwargs.update(temperature=temperature, top_p=0.9)
         with torch.inference_mode():

@@ -8,7 +8,6 @@ version = "1.0.0"
 description = "Scientific claim verification with semantic retrieval, scientific NLI and LLM-generated explanations (SciFact)."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
 dependencies = [
     "numpy>=1.24",
     "scikit-learn>=1.3",

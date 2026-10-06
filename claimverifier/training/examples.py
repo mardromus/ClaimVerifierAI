@@ -78,21 +78,22 @@ def _overlap(claim_words: set, sentence: str) -> float:
 
 
 def build_nli_examples(claims: Sequence[Claim], corpus: Sequence[Document], include_title: bool = False,
-                       nei_sentences: int = 2, seed: int = 42) -> List[NLIExample]:
+                       nei_sentences: int = 2, seed: int = 42,
+                       retrieved: Optional[Dict[int, Sequence[int]]] = None) -> List[NLIExample]:
     """Claim-level NLI examples (premise = evidence sentences, hypothesis = claim).
 
     * SUPPORTED / CONTRADICTED: each gold rationale set of an evidence abstract (and their union).
     * INSUFFICIENT_EVIDENCE: the sentences most lexically similar to the claim taken from
-      abstracts that are cited but contain no evidence, and from the non-rationale sentences
-      of evidence abstracts. These hard negatives teach the model that topical overlap alone
-      is not evidence.
+      abstracts that are cited but contain no evidence, from the non-rationale sentences of
+      evidence abstracts and (optionally) from the ``retrieved`` abstracts (claim id -> doc ids).
+      These hard negatives teach the model that topical overlap alone is not evidence.
     """
     rng = np.random.default_rng(seed)
     doc_by_id = {d.doc_id: d for d in corpus}
     examples: List[NLIExample] = []
     for claim in claims:
         claim_words = content_words(claim.claim)
-        for doc_id in _candidate_docs(claim, doc_by_id):
+        for doc_id in _candidate_docs(claim, doc_by_id, (retrieved or {}).get(claim.id, ())):
             doc = doc_by_id[doc_id]
             title = doc.title if include_title else None
             rationale = claim.rationale_sentences(doc_id)

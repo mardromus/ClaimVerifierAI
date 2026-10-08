@@ -103,3 +103,41 @@ def test_parse_pubmed_xml_and_factory():
     assert create_source("pubmed").name == "pubmed"
     with pytest.raises(ValueError):
         create_source("google")
+
+
+def test_fetch_checkpoint_from_fake_server(tmp_path):
+    import io
+    import tarfile
+    from http.server import SimpleHTTPRequestHandler
+
+    from claimverifier import hub
+
+    src = tmp_path / "srv"
+    model_dir = tmp_path / "pack" / "label_model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text(json.dumps({"id2label": {"0": "LABEL_0", "1": "LABEL_1", "2": "LABEL_2"}}))
+    (model_dir / "vocab.json").write_text("{}")
+    src.mkdir()
+    with tarfile.open(src / "m.tar.gz", "w:gz") as tar:
+        tar.add(model_dir, arcname="label_model")
+
+    class Quiet(SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=str(src), **kw)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Quiet)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        spec = {**hub.CHECKPOINTS["verisci"], "url": f"http://127.0.0.1:{server.server_address[1]}/m.tar.gz"}
+        hub.CHECKPOINTS["test"] = spec
+        dest = hub.fetch_checkpoint("test", tmp_path / "models" / "v")
+    finally:
+        server.shutdown()
+        hub.CHECKPOINTS.pop("test", None)
+    cfg = json.loads((dest / "config.json").read_text())
+    assert cfg["id2label"]["0"] == "CONTRADICT" and cfg["label2id"]["SUPPORT"] == 2 and (dest / "vocab.json").exists()
+    with pytest.raises(ValueError):
+        hub.fetch_checkpoint("nope", tmp_path / "x")

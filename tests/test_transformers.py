@@ -178,3 +178,30 @@ def test_transformers_chat_llm(tmp_path):
                           [EvidenceForPrompt(1, "Aspirin study", SUPPORTED, 0.9, ["Aspirin reduced risk."])])
     out = llm.chat(msgs, max_new_tokens=5, temperature=0.0)
     assert isinstance(out, str)
+
+
+def test_nli_fallback_models_and_probes(tmp_path, nli_dir, lite_verifier):
+    import copy
+
+    from claimverifier.evaluation.probes import load_probes, run_probes
+    from claimverifier.nli import create_nli_model
+
+    cfg = copy.deepcopy(lite_verifier.cfg)
+    cfg.nli.method, cfg.nli.model_name, cfg.nli.finetuned_path = "transformer", str(tmp_path / "missing"), ""
+    cfg.nli.fallback_models = [str(tmp_path / "also-missing"), str(nli_dir)]
+    model = create_nli_model(cfg, cfg.artifacts_dir)
+    assert model.describe()["model"] == str(nli_dir)
+    probes = load_probes()
+    assert len(probes) == 24 and sum(p["label"] == "SUPPORTED" for p in probes) == 12
+    out = run_probes(model, probes)
+    assert out["total"] == 24 and 0 <= out["accuracy"] <= 1
+
+
+@pytest.mark.skipif(not (Path(__file__).resolve().parents[1] / "models" / "verisci-roberta-large" / "config.json").exists(),
+                    reason="run `python -m claimverifier fetch-verifier` to enable this model-quality test")
+def test_verisci_passes_stance_probes():
+    from claimverifier.evaluation.probes import run_probes
+    from claimverifier.nli import TransformerNLI
+
+    model = TransformerNLI(str(Path(__file__).resolve().parents[1] / "models" / "verisci-roberta-large"), batch_size=8)
+    assert run_probes(model)["accuracy"] >= 0.9

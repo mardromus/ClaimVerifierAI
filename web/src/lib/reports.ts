@@ -2,6 +2,7 @@ const NAMES: Record<string, string> = {
   lite_dev: "Lite (offline)",
   "scibert-rationale+lite-nli_dev": "SciBERT evidence + lite stance",
   scibert_dev: "SciBERT pipeline",
+  verisci_dev: "SciBERT + RoBERTa verifier",
   "scibert-rerank_dev": "SciBERT + re-ranking",
   default_dev: "Default (SBERT · SciBERT · DeBERTa-v3)",
   large_dev: "Large (GPU)",

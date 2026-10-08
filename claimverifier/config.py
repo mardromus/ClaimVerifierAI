@@ -77,6 +77,8 @@ class NLIConfig:
     finetuned_path: str = "models/deberta-v3-scifact"
     # Checkpoint that `train-nli` starts from (default: model_name).
     base_model: Optional[str] = None
+    # Other transformer checkpoints tried, in order, if model_name cannot be loaded (e.g. offline).
+    fallback_models: List[str] = field(default_factory=list)
     fallbacks: List[str] = field(default_factory=lambda: ["lite"])
     max_length: int = 512
     batch_size: int = 16

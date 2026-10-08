@@ -1,0 +1,43 @@
+# Best pipeline measured on CPU in this repository (see README → Results).
+#   Retrieval   : BM25 (+ LSA vectors in FAISS for similarity features)
+#   Rationale   : SciBERT cross-encoder fine-tuned on SciFact          (python -m claimverifier train-rationale)
+#   Verification: RoBERTa-large trained on FEVER + SciFact by the SciFact authors
+#                 (python -m claimverifier fetch-verifier)
+#   Explanation : Qwen2.5-1.5B-Instruct when available, otherwise the extractive template
+# Setup:
+#   python -m claimverifier setup --config configs/verisci.yaml --no-calibrate
+#   python -m claimverifier fetch-verifier
+#   python -m claimverifier train-rationale --config configs/verisci.yaml --neg-ratio 4 --lr 3e-5
+name: verisci
+artifacts_dir: artifacts/verisci
+device: auto
+
+retrieval:
+  embedder: lsa
+  lsa_dim: 384
+  top_k: 5
+  hybrid: true
+  dense_weight: 0.0
+  bm25_weight: 1.0
+
+rationale:
+  method: scibert
+  model_path: models/scibert-rationale
+  base_model: allenai/scibert_scivocab_uncased
+  fallbacks: [features, similarity]
+  threshold: 0.5
+  max_sentences: 3
+  max_length: 128
+
+nli:
+  method: transformer
+  model_name: models/verisci-roberta-large
+  finetuned_path: ""
+  fallbacks: [lite]
+  max_length: 512
+  batch_size: 8
+
+explanation:
+  backend: transformers
+  model_name: Qwen/Qwen2.5-1.5B-Instruct
+  fallback_to_template: true

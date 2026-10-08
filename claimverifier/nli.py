@@ -159,8 +159,17 @@ def create_nli_model(cfg, artifacts_dir: str | Path, device: str = "cpu") -> NLI
         try:
             if method == "transformer":
                 path = ncfg.finetuned_path
-                source = path if path and (Path(path) / "config.json").exists() else ncfg.model_name
-                model = TransformerNLI(source, device, ncfg.batch_size, ncfg.max_length)
+                primary = path if path and (Path(path) / "config.json").exists() else ncfg.model_name
+                model = None
+                for source in [primary, *ncfg.fallback_models]:
+                    try:
+                        model = TransformerNLI(source, device, ncfg.batch_size, ncfg.max_length)
+                        break
+                    except Exception as e:  # noqa: BLE001 - try the next checkpoint
+                        errors.append(f"transformer {source}: {e}")
+                        logger.warning("NLI checkpoint %r unavailable: %s", source, e)
+                if model is None:
+                    raise RuntimeError("no transformer NLI checkpoint could be loaded")
             elif method == "lite":
                 if not (lite_dir / LiteNLI.FILE).exists():
                     raise FileNotFoundError(f"no lite NLI model in {lite_dir} (run `python -m claimverifier train-lite`)")

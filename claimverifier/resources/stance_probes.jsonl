@@ -1,0 +1,24 @@
+{"premise": "Aspirin reduced the risk of colorectal cancer by 23%.", "claim": "Aspirin reduces the risk of colorectal cancer.", "label": "SUPPORTED"}
+{"premise": "Aspirin reduced the risk of colorectal cancer by 23%.", "claim": "Aspirin increases the risk of colorectal cancer.", "label": "CONTRADICTED"}
+{"premise": "Aspirin use was associated with a 23% lower risk of colorectal cancer.", "claim": "Aspirin use is associated with a lower risk of colorectal cancer.", "label": "SUPPORTED"}
+{"premise": "Aspirin use was associated with a 23% lower risk of colorectal cancer.", "claim": "Aspirin use is associated with a higher risk of colorectal cancer.", "label": "CONTRADICTED"}
+{"premise": "Green tea extract significantly reduced systolic blood pressure compared with placebo.", "claim": "Green tea lowers blood pressure.", "label": "SUPPORTED"}
+{"premise": "Green tea extract significantly reduced systolic blood pressure compared with placebo.", "claim": "Green tea raises blood pressure.", "label": "CONTRADICTED"}
+{"premise": "Exercise training increased insulin sensitivity by 25% relative to control.", "claim": "Exercise improves insulin sensitivity.", "label": "SUPPORTED"}
+{"premise": "Exercise training increased insulin sensitivity by 25% relative to control.", "claim": "Exercise decreases insulin sensitivity.", "label": "CONTRADICTED"}
+{"premise": "Vitamin D supplementation did not reduce the incidence of fractures compared with placebo.", "claim": "Vitamin D supplementation does not prevent fractures.", "label": "SUPPORTED"}
+{"premise": "Vitamin D supplementation did not reduce the incidence of fractures compared with placebo.", "claim": "Vitamin D supplementation prevents fractures.", "label": "CONTRADICTED"}
+{"premise": "Current smoking increased the risk of COPD fourfold.", "claim": "Smoking increases the risk of COPD.", "label": "SUPPORTED"}
+{"premise": "Current smoking increased the risk of COPD fourfold.", "claim": "Smoking protects against COPD.", "label": "CONTRADICTED"}
+{"premise": "Sleep deprivation impaired recall of word pairs by 40% compared with normal sleep.", "claim": "Sleep deprivation impairs memory.", "label": "SUPPORTED"}
+{"premise": "Sleep deprivation impaired recall of word pairs by 40% compared with normal sleep.", "claim": "Sleep deprivation improves memory.", "label": "CONTRADICTED"}
+{"premise": "Higher coffee consumption was associated with a lower risk of Parkinson disease.", "claim": "Coffee drinking is associated with a reduced risk of Parkinson disease.", "label": "SUPPORTED"}
+{"premise": "Higher coffee consumption was associated with a lower risk of Parkinson disease.", "claim": "Coffee drinking is associated with an increased risk of Parkinson disease.", "label": "CONTRADICTED"}
+{"premise": "Early antibiotic exposure was associated with an increased risk of asthma.", "claim": "Antibiotics in infancy increase the risk of childhood asthma.", "label": "SUPPORTED"}
+{"premise": "Early antibiotic exposure was associated with an increased risk of asthma.", "claim": "Antibiotics in infancy decrease the risk of childhood asthma.", "label": "CONTRADICTED"}
+{"premise": "Rosuvastatin reduced major cardiovascular events by 44% in adults without cardiovascular disease.", "claim": "Statins reduce cardiovascular events in primary prevention.", "label": "SUPPORTED"}
+{"premise": "Rosuvastatin reduced major cardiovascular events by 44% in adults without cardiovascular disease.", "claim": "Statins have no effect on cardiovascular events in primary prevention.", "label": "CONTRADICTED"}
+{"premise": "Obese individuals had lower microbial diversity than lean individuals.", "claim": "Obesity is associated with reduced gut microbial diversity.", "label": "SUPPORTED"}
+{"premise": "Obese individuals had lower microbial diversity than lean individuals.", "claim": "Obesity is associated with greater gut microbial diversity.", "label": "CONTRADICTED"}
+{"premise": "The vaccine was 95% effective in preventing symptomatic infection.", "claim": "The vaccine prevents symptomatic infection.", "label": "SUPPORTED"}
+{"premise": "The vaccine was 95% effective in preventing symptomatic infection.", "claim": "The vaccine does not prevent symptomatic infection.", "label": "CONTRADICTED"}

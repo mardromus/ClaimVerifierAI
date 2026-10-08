@@ -124,6 +124,26 @@ def cmd_train_nli(args):
     print(json.dumps({k: info[k] for k in ("best_epoch", "best_score", "history")}, indent=2))
 
 
+def cmd_probe(args):
+    from .evaluation.probes import run_probes
+    from .nli import create_nli_model
+
+    cfg = _cfg(args)
+    nli = create_nli_model(cfg, cfg.artifacts_dir, resolve_device(cfg.device))
+    out = run_probes(nli)
+    for r in out["rows"]:
+        mark = "ok " if r["predicted"] == r["label"] else "ERR"
+        print(f"{mark} {r['label'][:3]}->{r['predicted'][:3]}  {r['claim']}")
+    print(f"\nStance probes: {out['correct']}/{out['total']} correct ({100 * out['accuracy']:.1f}%) with {nli.describe()}")
+
+
+def cmd_fetch_verifier(args):
+    from .hub import fetch_checkpoint
+
+    path = fetch_checkpoint(args.name, args.output, force=args.force)
+    print(f"Saved to {path}. Use it with --config configs/verisci.yaml, or --set nli.model_name={path}")
+
+
 def print_result(result, show_all: bool = False) -> None:
     from .pipeline import shown_documents
 
@@ -287,6 +307,16 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--retrieval-negatives", type=int, default=0, metavar="K",
                        help="add each claim's top-K retrieved abstracts as hard negatives")
         p.set_defaults(func=func)
+
+    sub.add_parser("probe", parents=[common], help="check the NLI model on 24 plain-language stance probes") \
+        .set_defaults(func=cmd_probe)
+
+    p = sub.add_parser("fetch-verifier", parents=[common],
+                       help="download the RoBERTa-large FEVER+SciFact verifier released by the SciFact authors")
+    p.add_argument("--name", default="verisci")
+    p.add_argument("--output", default="models/verisci-roberta-large")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_fetch_verifier)
 
     p = sub.add_parser("verify", parents=[common], help="verify one or more claims (args or stdin)")
     p.add_argument("claims", nargs="*")

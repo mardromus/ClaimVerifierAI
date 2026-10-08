@@ -29,6 +29,7 @@ nli:
   method: transformer
   model_name: MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli
   finetuned_path: models/deberta-v3-scifact   # used automatically once `train-nli` has run
+  fallback_models: [models/verisci-roberta-large]   # offline fallback (`claimverifier fetch-verifier`)
   fallbacks: [lite]
   max_length: 512
 

@@ -46,9 +46,10 @@ export default function EvaluationPage() {
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">How well does it work?</h1>
         <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-muted">
-          Every pipeline is scored on the SciFact <b className="font-medium text-ink-2">dev split</b> (300 expert-written claims), which is never
-          used for training or tuning. Claim-level accuracy and macro-F1 measure the verdict; Recall@K and MRR measure whether the right papers
-          are found; abstract-level F1 is the official SciFact metric.
+          Every pipeline is scored on the SciFact <b className="font-medium text-ink-2">dev split</b> (300 expert-written claims). It is never
+          trained on and never used to tune decision settings; as in the SciFact baselines, only the best epoch of a fine-tuned model is picked
+          on it. Accuracy and macro-F1 measure the verdict, Recall@K and MRR whether the right papers are found, and abstract-level F1 is the
+          official SciFact metric.
         </p>
       </header>
 

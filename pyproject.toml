@@ -36,7 +36,7 @@ claimverifier = "claimverifier.cli:main"
 include = ["claimverifier*"]
 
 [tool.setuptools.package-data]
-claimverifier = ["web/dist/*", "web/dist/assets/*"]
+claimverifier = ["web/dist/*", "web/dist/assets/*", "resources/*.jsonl"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

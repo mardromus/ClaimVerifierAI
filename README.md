@@ -1,199 +1,182 @@
-# ClaimVerifier AI — Scientific Claim Verification with NLP and Retrieval-Augmented Generation
+# ClaimVerifier AI
 
-ClaimVerifier AI checks a scientific claim against the research literature. You enter a claim; the system
-**retrieves relevant research abstracts**, **highlights the sentences that act as evidence**, **classifies the
-claim as _Supported_, _Contradicted_ or _Insufficient Evidence_** with **confidence scores**, and writes a
-**concise explanation with citations**.
+**Check any scientific claim against the research literature.** ClaimVerifier retrieves relevant papers, highlights
+the sentences that act as evidence, and classifies the claim as **Supported**, **Contradicted** or **Insufficient
+Evidence** with confidence scores. It then writes a short explanation that cites its sources. Every verdict can be
+traced back to specific sentences in specific papers.
 
-Unlike a search engine that only lists related papers, it combines semantic retrieval, scientific
-natural-language inference and LLM-generated explanations into a transparent, evidence-based verdict:
-every decision can be traced back to specific sentences in specific papers.
+![ClaimVerifier AI: verdict, cited explanation and highlighted evidence](docs/screenshot.png)
 
-![ClaimVerifier AI web interface](docs/screenshot.png)
+| | |
+|---|---|
+| ![Landing page](docs/screenshot-home.png) | ![Evaluation dashboard, dark mode](docs/screenshot-evaluation-dark.png) |
 
-It is built on the open **[SciFact](https://github.com/allenai/scifact)** dataset (Wadden et al., EMNLP 2020):
-5,183 research abstracts and 1,409 expert-written claims annotated with SUPPORT / CONTRADICT labels and
-rationale sentences.
+It is built on the open **[SciFact](https://github.com/allenai/scifact)** dataset (Wadden et al., EMNLP 2020): 5,183
+research abstracts and 1,409 expert-written claims annotated with SUPPORT / CONTRADICT labels and rationale sentences.
+It can also search live abstracts through Europe PMC and PubMed, or check a claim against text you paste in.
 
-| Component | Model / technique | Role |
-|---|---|---|
-| Semantic retrieval | **Sentence-BERT** (`all-MiniLM-L6-v2`) + **FAISS** | Dense vector search over the abstract corpus |
-| Lexical retrieval | **BM25**, fused with reciprocal-rank fusion | Hybrid search (exact terms, numbers, gene names) |
-| Evidence selection | **SciBERT** cross-encoder fine-tuned on SciFact | Scores every sentence of a retrieved abstract as evidence or not |
-| Verification | **DeBERTa-v3** NLI (MNLI/FEVER/ANLI, optionally fine-tuned on SciFact) | Does the evidence entail, contradict, or not address the claim? |
-| Aggregation | Relevance-gated evidence combination | Claim-level verdict and confidence scores |
-| Explanation (RAG) | **Qwen 2.5 Instruct** or **Llama 3 Instruct** | Short explanation grounded in the evidence, with `[n]` citations |
-| Evaluation | Accuracy, Precision, Recall, F1, **Recall@K**, **MRR**, SciFact abstract-level F1 | Retrieval and verification quality |
+## Highlights
 
-An **offline "lite" pipeline** (BM25 retrieval with TF-IDF/LSA vectors in FAISS, scikit-learn evidence and stance
-models, template explanations) runs with no PyTorch and no model downloads. The SciBERT, DeBERTa-v3 and LLM
-components fall back automatically to these lightweight counterparts when they are unavailable (for example,
-before SciBERT has been fine-tuned).
-
----
+- **Web app** (React + TypeScript + Tailwind). The pipeline runs stage by stage on screen, and explanations stream in
+  token by token. Hovering a citation chip highlights the paper it cites. Evidence sentences are colour-coded by stance,
+  and each full abstract has an evidence heatmap. The app also includes:
+  - batch verification, with accuracy and macro-F1 when you supply gold labels;
+  - claim extraction from a pasted article;
+  - an evaluation dashboard;
+  - history, share links, and Markdown/JSON export;
+  - light and dark themes.
+- **Transparent NLP pipeline:**
+  - Sentence-BERT + FAISS, fused with BM25, finds the papers.
+  - SciBERT selects evidence sentences and can re-rank papers by them.
+  - DeBERTa-v3 NLI decides the stance.
+  - A relevance-gated aggregator produces the verdict and confidence scores.
+  - Llama 3 / Qwen 2.5 explain the verdict with retrieval-augmented generation.
+- **Live literature search** through Europe PMC and PubMed, plus a "your text" mode for any abstract.
+- **Streaming REST API** (FastAPI, server-sent events), with interactive docs at `/docs`.
+- **Measured, not guessed:** accuracy, precision, recall, F1, Recall@K, MRR and the official SciFact abstract-level F1,
+  all on a held-out split. A plain-language robustness probe catches models that only learned dataset quirks. The
+  reports are browsable in the UI.
+- **Runs anywhere:** one `pip install`, a Docker image, or a fully offline CPU configuration with no model downloads.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    C[Claim] --> R1[Sentence-BERT embedding]
-    R1 --> F[(FAISS index<br/>5,183 abstracts)]
-    C --> B[BM25]
-    F --> RRF[Reciprocal-rank fusion<br/>top-k abstracts]
-    B --> RRF
-    RRF --> S[SciBERT rationale selector<br/>scores each sentence]
+    C[Claim] --> R{Source}
+    R -->|SciFact corpus| D[Sentence-BERT + FAISS<br/>fused with BM25]
+    R -->|live| L[Europe PMC / PubMed]
+    R -->|your text| U[Pasted abstracts]
+    D --> S[SciBERT rationale selector<br/>scores every sentence · re-ranks papers]
+    L --> S
+    U --> S
     S --> N[DeBERTa-v3 NLI<br/>evidence ⟶ claim]
     N --> A[Aggregation<br/>verdict + confidence]
-    A --> L[LLM explanation<br/>Qwen 2.5 / Llama 3, RAG prompt]
-    S --> UI
-    A --> UI[Web UI / REST API / CLI]
-    L --> UI
+    A --> E[LLM explanation<br/>Qwen 2.5 / Llama 3, RAG]
+    A --> UI[Web UI · REST API · CLI]
+    E --> UI
 ```
 
-1. **Retrieval.** Claim and abstracts (title + text) are embedded with Sentence-BERT and searched with a
-   FAISS inner-product index (exact `flat` by default; `hnsw` / `ivf` for large corpora). The dense ranking is
-   fused with a BM25 ranking using reciprocal-rank fusion (RRF), which is robust to their different score scales.
-2. **Rationale selection.** For each of the top-k abstracts, a SciBERT cross-encoder scores every
-   `(claim, sentence)` pair. Up to 3 sentences above the threshold become the abstract's evidence (if none
-   passes, the best sentence is kept as weak evidence).
-3. **Natural language inference.** DeBERTa-v3 reads `premise = evidence sentences`, `hypothesis = claim`, and
-   outputs entailment / contradiction / neutral probabilities, which map to Supported / Contradicted /
-   Insufficient. It also runs per sentence to colour each highlighted sentence by stance.
-4. **Aggregation.** Each abstract is weighted by its evidence relevance, `g = min(1, r / τ)`, where `r` is the
-   best rationale score and `τ` the threshold. The strongest weighted support `S = max g·p(support)` and contradiction
-   `C = max g·p(contradict)` are combined as two independent detectors:
-   `P(Supported) ∝ S(1−C) + share of SC`, `P(Contradicted) ∝ C(1−S) + share of SC`,
-   `P(Insufficient) ∝ w·(1−S)(1−C)`. The three scores sum to one and serve as the confidence scores; conflicting
-   strong evidence is flagged as *mixed*. The threshold `τ` and the weight `w` can be tuned with `calibrate`.
-5. **Explanation (RAG).** The verdict, confidence and numbered evidence sentences are put into a prompt for an
-   instruction-tuned LLM, which must explain the verdict using only that evidence and cite sources as `[n]`.
-   Citations to non-existent sources are removed; if the LLM is unavailable, a deterministic extractive
-   explanation with citations is produced instead.
+1. **Retrieval.** Claim and abstracts are embedded with Sentence-BERT and searched with a FAISS inner-product index.
+   The dense ranking is fused with BM25 using reciprocal-rank fusion. Live mode queries Europe PMC or PubMed instead;
+   structured abstracts are parsed and sentence-split.
+2. **Evidence selection.** A SciBERT cross-encoder fine-tuned on SciFact scores every `(claim, sentence)` pair. With
+   `retrieval.rerank_depth` set, more candidates are retrieved and the ones with the strongest evidence are kept.
+3. **Natural language inference.** The selected evidence is the premise and the claim is the hypothesis. Entailment
+   maps to Supported, contradiction to Contradicted, and neutral to Insufficient Evidence. The model is DeBERTa-v3, or a
+   fine-tuned SciBERT verifier.
+4. **Aggregation.** Each paper is weighted by its evidence relevance, `g = min(1, r / τ)`. The strongest weighted
+   support `S` and contradiction `C` combine as:
+   - `P(Supported) ∝ S(1−C) + share of SC`
+   - `P(Contradicted) ∝ C(1−S) + share of SC`
+   - `P(Insufficient) ∝ w·(1−S)(1−C)`
 
----
+   The three scores sum to one. Strong evidence in both directions is flagged as *mixed*. `τ` and `w` can be calibrated
+   on the train split.
+5. **Explanation (RAG).** An instruction-tuned LLM explains the verdict using only the numbered evidence, citing it as
+   `[n]`. Citations to sources that don't exist are removed. The verdict always comes from the NLI pipeline, never from
+   the LLM. Without an LLM, a deterministic extractive explanation with citations is used instead.
 
 ## Quick start
 
-### 1. Install
-
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt          # full stack (PyTorch, transformers, sentence-transformers, FAISS)
-# or: pip install -r requirements-lite.txt   # offline lite stack, no PyTorch
+pip install -r requirements.txt                       # or requirements-lite.txt for the offline stack
+
+python -m claimverifier setup --config configs/default.yaml   # download SciFact, build the index, train fallbacks
+python -m claimverifier serve --config configs/default.yaml   # → http://localhost:8000
 ```
 
-Python 3.9+ is supported. A GPU is optional; it speeds up fine-tuning and explanation generation.
+The built web UI ships inside the Python package, so Node.js is only needed to work on the frontend.
 
-### 2. Offline pipeline (no downloads except the dataset; a few minutes on a laptop CPU)
+### Configurations
+
+| Config | Retrieval | Evidence selection | Verification | Explanation | Needs |
+|---|---|---|---|---|---|
+| `lite.yaml` | BM25 (+ LSA in FAISS) | logistic regression on features | lexical stance model | template | CPU only, no downloads |
+| `scibert.yaml` | BM25 (+ LSA in FAISS) | **SciBERT** (fine-tuned) | **SciBERT** verifier (fine-tuned) | template | SciBERT download |
+| `verisci.yaml` | BM25 (+ LSA in FAISS) | **SciBERT** (fine-tuned) | **RoBERTa-large** verifier (FEVER + SciFact) | Qwen 2.5, or template | SciBERT + S3 download; **best measured** |
+| `default.yaml` | **Sentence-BERT** + FAISS + BM25 | **SciBERT** (fine-tuned) | **DeBERTa-v3** NLI | **Qwen2.5-1.5B-Instruct** | Hugging Face downloads |
+| `large.yaml` | mpnet SBERT + FAISS + BM25 | SciBERT | DeBERTa-v3-large NLI | Llama-3-8B-Instruct | GPU ≥ 16 GB |
+
+Fine-tune the SciBERT components. Each takes minutes on a GPU, or about an hour on a CPU.
 
 ```bash
-python -m claimverifier setup --config configs/lite.yaml     # download SciFact, build index, train, calibrate
-python -m claimverifier verify --config configs/lite.yaml \
-    "32% of liver transplantation programs required patients to discontinue methadone treatment in 2001."
-```
-
-### 3. Full transformer pipeline
-
-```bash
-# Download SciFact, embed the corpus with Sentence-BERT into FAISS, train the lightweight fallbacks.
-python -m claimverifier setup --config configs/default.yaml
-
-# Fine-tune SciBERT for evidence-sentence selection (minutes on a GPU, about an hour on a CPU).
 python -m claimverifier train-rationale --config configs/default.yaml --neg-ratio 4 --lr 3e-5
-
-# Optional: adapt DeBERTa-v3 NLI to scientific claims (without this the MNLI/FEVER/ANLI model is used zero-shot).
-python -m claimverifier train-nli --config configs/default.yaml --retrieval-negatives 2
-
-# Re-tune the decision threshold for the new models on the train split, then evaluate on dev.
+python -m claimverifier train-nli --config configs/default.yaml --retrieval-negatives 2   # optional for DeBERTa
 python -m claimverifier calibrate --config configs/default.yaml --split train
 python -m claimverifier evaluate  --config configs/default.yaml --split dev
 ```
 
-**SciBERT-only pipeline** (`configs/scibert.yaml`): BM25 retrieval, a SciBERT evidence selector and a SciBERT
-claim verifier, both fine-tuned on SciFact. It needs only the SciBERT download and gave the best results measured
-here (see [Results](#results)):
-
-```bash
-python -m claimverifier setup --config configs/scibert.yaml --no-calibrate
-python -m claimverifier train-rationale --config configs/scibert.yaml --neg-ratio 4 --lr 3e-5
-python -m claimverifier train-nli --config configs/scibert.yaml --retrieval-negatives 2 --lr 3e-5 --batch-size 16 --grad-accum 1
-python -m claimverifier evaluate --config configs/scibert.yaml --split dev
-```
-
-`configs/large.yaml` uses larger models (`multi-qa-mpnet-base-cos-v1`, `DeBERTa-v3-large`, `Llama-3-8B-Instruct`)
-for a GPU with at least 16 GB of memory.
-
-### 4. Use it
-
-**Web UI** (Streamlit): verdict card, confidence bars, explanation with clickable citations, and abstracts with
-evidence sentences highlighted green (supports), red (contradicts) or amber (neutral). It can also verify a claim
-against abstracts you paste in, and it shows the evaluation reports.
-
-```bash
-streamlit run app/streamlit_app.py
-```
-
-**REST API** (FastAPI, interactive docs at `http://localhost:8000/docs`):
-
-```bash
-python -m claimverifier serve --config configs/default.yaml --port 8000
-
-curl -X POST localhost:8000/verify -H 'Content-Type: application/json' \
-     -d '{"claim": "Taking anti-depressants is associated with a decrease in the risk of gastrointestinal bleeding.", "top_k": 5}'
-```
-
-| Endpoint | Description |
-|---|---|
-| `POST /verify` | `{claim, top_k?, explain?}`: verdict, scores, retrieved papers with highlighted evidence, explanation |
-| `POST /verify/batch` | Up to 32 claims |
-| `POST /verify/custom` | Verify a claim against abstracts supplied in the request |
-| `GET /documents/{doc_id}` | An abstract from the corpus |
-| `GET /examples` | Random labelled SciFact claims |
-| `GET /health` | Status and loaded components |
-
-**CLI**: `verify` accepts several claims (or reads them from stdin), `--json` for machine-readable output and
-`--show-all` to list papers without evidence.
-
-**Docker**: `docker compose run --rm setup && docker compose up api ui`.
+For the best pipeline measured here, run `python -m claimverifier fetch-verifier` and use `configs/verisci.yaml`
+(`setup --no-calibrate`, then `train-rationale`). For the SciBERT-only pipeline, use `configs/scibert.yaml` with the same
+commands. There, `train-nli` fine-tunes SciBERT
+as a 3-way verifier; add `--lr 3e-5 --batch-size 16 --grad-accum 1`. `--augment` adds direction-flipped and
+paraphrased claims to the training data (see [Results](#results)).
 
 ### LLM backends for explanations
 
 | `explanation.backend` | Model | Notes |
 |---|---|---|
-| `transformers` (default) | `Qwen/Qwen2.5-1.5B-Instruct` | Runs locally on CPU or GPU, no login needed |
-| `transformers` | `meta-llama/Meta-Llama-3-8B-Instruct` | Gated: accept the license on Hugging Face and run `huggingface-cli login` |
-| `ollama` | `llama3.1:8b`, `qwen2.5:7b`, ... | `ollama pull llama3.1:8b`, then `--set explanation.backend=ollama` |
-| `openai` | Any model served by vLLM, llama.cpp, LM Studio, TGI | `--set explanation.backend=openai --set explanation.openai_base_url=http://host:8000/v1` |
-| `template` | None | Deterministic extractive explanation with citations |
+| `transformers` (default) | `Qwen/Qwen2.5-1.5B-Instruct` | Local, CPU or GPU, no login |
+| `transformers` | `meta-llama/Meta-Llama-3-8B-Instruct` | Gated: accept the license and `huggingface-cli login` |
+| `ollama` | `llama3.1:8b`, `qwen2.5:7b`, … | `ollama pull llama3.1:8b`, then `--set explanation.backend=ollama` |
+| `openai` | anything served by vLLM, llama.cpp, LM Studio, TGI | `--set explanation.backend=openai --set explanation.openai_base_url=http://host:8000/v1` |
+| `template` | none | Deterministic extractive explanation with citations |
 
-Any config value can be overridden from the command line, e.g.
-`--set retrieval.top_k=10 --set explanation.backend=ollama`.
+All backends stream tokens to the UI. Any config value can be overridden on the command line, for example
+`--set retrieval.top_k=8 --set retrieval.rerank_depth=10`.
 
----
+### Docker
+
+```bash
+docker compose run --rm setup     # one-off: data, index, fallbacks, calibration
+docker compose up app             # http://localhost:8000
+```
+
+The image builds the web UI in a Node stage and serves it from the same FastAPI process.
 
 ## Results
 
-All numbers are on the **SciFact dev split** (300 claims: 124 Supported, 64 Contradicted, 112 Insufficient
-Evidence), which is never used for training or tuning. Training and calibration use the train split only. The full reports
-(per-class scores, confusion matrices, predictions) are in [`reports/`](reports).
+All numbers are on the **SciFact dev split**: 300 claims (124 Supported, 64 Contradicted, 112 Insufficient Evidence).
+Models never train on it, and decision settings are never tuned on it. As in the SciFact baselines, only the best epoch
+of a fine-tuned SciBERT model is chosen on dev claim–evidence pairs. Full reports (per-class scores, confusion
+matrices, predictions) are in [`reports/`](reports) and on the **Evaluation** page.
 
-These runs come from a CPU-only environment where the Hugging Face Hub was not reachable. SciBERT weights were
-available (from AI2's S3 mirror), but Sentence-BERT, DeBERTa-v3 and Qwen/Llama were not, so the `default` and `large`
-configurations are not benchmarked here. Run `python -m claimverifier evaluate --config configs/default.yaml` to add
-them; the report is written to `reports/default_dev/` and shown in the UI.
+These runs come from a CPU-only environment where the Hugging Face Hub was not reachable. SciBERT and the SciFact
+authors' RoBERTa verifier were available from AI2's S3 bucket, but Sentence-BERT, DeBERTa-v3 and Qwen/Llama were not.
+So the `default` and `large` configurations are not benchmarked here; run `make evaluate` to add them.
 
-### Claim verification (Supported / Contradicted / Insufficient Evidence)
+### Claim verification
 
-| Configuration | Evidence selection | Verification | Accuracy | Macro P | Macro R | Macro F1 |
-|---|---|---|---|---|---|---|
-| Majority class (always *Supported*) | – | – | 41.3 | 13.8 | 33.3 | 19.5 |
-| `lite` (offline, calibrated on train) | logistic regression on features | lexical stance model | 52.3 | 47.2 | 46.5 | 45.7 |
-| `scibert`, with the lite stance model | **SciBERT** (fine-tuned) | lexical stance model | 63.3 | 60.6 | 57.7 | 57.9 |
-| `scibert` | **SciBERT** (fine-tuned) | **SciBERT** verifier (fine-tuned) | **66.3** | **63.8** | **64.1** | **63.7** |
+| Pipeline (config) | Evidence selection | Verification | Accuracy | Macro P | Macro R | **Macro F1** | Contradicted F1 | Abstract F1 (label / rationalized) |
+|---|---|---|---|---|---|---|---|---|
+| Majority class (always *Supported*) | – | – | 41.3 | 13.8 | 33.3 | 19.5 | 0.0 | – |
+| `lite` (offline, calibrated on train) | logistic regression | lexical stance model | 52.3 | 47.2 | 46.5 | 45.7 | 21.1 | 24.8 / 21.6 |
+| `scibert` + lexical stance | **SciBERT** | lexical stance model | 63.3 | 60.6 | 57.7 | 57.9 | 34.6 | 38.9 / 35.5 |
+| `scibert` | **SciBERT** | SciBERT verifier | 66.3 | 63.8 | 64.1 | 63.7 | 47.8 | 40.1 / 36.6 |
+| **`verisci`** | **SciBERT** | **RoBERTa-large (FEVER + SciFact)** | **69.7** | **69.3** | **67.0** | **67.7** | **58.4** | **52.5 / 48.9** |
 
-SciFact abstract-level F1 (label-only / rationalized): lite 24.8 / 21.6, SciBERT rationale + lite stance 38.9 / 35.5,
-full SciBERT 40.1 / 36.6. Per-class F1 of the full SciBERT pipeline: Supported 68.4, Contradicted 47.8,
-Insufficient Evidence 74.8 (it runs uncalibrated: threshold 0.5, NEI weight 1.0).
+The `verisci` verifier was trained by the SciFact authors on FEVER and SciFact train (`claimverifier fetch-verifier`
+downloads it). In this pipeline it works behind our SciBERT evidence selector and BM25 retrieval.
+
+### Robustness: plain-language stance probes
+
+Benchmark scores can hide models that learned dataset quirks. `python -m claimverifier probe` runs 24 hand-written
+pairs (12 supported, 12 contradicted) that differ only in effect direction, negation or paraphrase. Example: evidence
+"Aspirin reduced the risk of colorectal cancer by 23%" with the claims "Aspirin reduces…" and "Aspirin increases…".
+
+| Verifier | Probes correct | SciFact dev macro-F1 (pipeline) |
+|---|---|---|
+| Lexical stance model (`lite`) | 20 / 24 (83%) | 45.7 |
+| SciBERT verifier, fine-tuned on SciFact (`scibert`) | 14 / 24 (58%) | 63.7 |
+| SciBERT verifier + direction augmentation (`train-nli --augment`) | 10 / 24 (42%) | 65.8 |
+| **RoBERTa-large, FEVER + SciFact (`verisci`)** | **24 / 24 (100%)** | **67.7** |
+
+SciBERT fine-tuned on about 3k SciFact pairs scores reasonably on dev, but it gets everyday phrasings wrong; for
+example, it rates "reduced the risk" as contradicting "reduces the risk". Augmenting its training data with flipped and
+paraphrased claims raised dev macro-F1 by 2.1 points but made the probes *worse*, so it is not used by default. A
+verifier pretrained on large fact-checking data fixes both. That is why `default.yaml` uses DeBERTa-v3
+(MNLI/FEVER/ANLI) and falls back to the RoBERTa verifier when offline.
 
 ### Evidence retrieval (188 dev claims with gold evidence abstracts)
 
@@ -201,91 +184,121 @@ Insufficient Evidence 74.8 (it runs uncalibrated: threshold 0.5, NEI weight 1.0)
 |---|---|---|---|---|---|---|
 | LSA dense embeddings + FAISS | 40.4 | 54.0 | 66.9 | 76.5 | 84.6 | 0.532 |
 | LSA + BM25, reciprocal-rank fusion | 55.4 | 68.8 | 78.7 | 85.3 | 91.0 | 0.661 |
-| **BM25** (used by `lite` / `scibert`) | **69.0** | **80.1** | **86.6** | **91.6** | **93.8** | **0.776** |
+| **BM25** (used by `lite` / `scibert` / `verisci`) | 69.0 | 80.1 | 86.6 | 91.6 | 93.8 | 0.776 |
+| BM25 top 10 → **SciBERT re-ranking** (top 5 kept) | **72.7** | **84.4** | **88.0** | – | – | 0.804 @5 |
 
-LSA vectors are too coarse to help BM25 on SciFact, whose claims share precise terms with their source abstracts. The
-fusion weight was therefore set to 0 using the **train** split. Sentence-BERT embeddings are much stronger dense
-representations, and `default.yaml` fuses them with BM25 at equal RRF weights. Check this on your setup with
-`python -m claimverifier evaluate --config configs/default.yaml --retrieval-only` (add `--split train` when tuning
-`retrieval.dense_weight`).
+LSA vectors are too coarse to help BM25 on SciFact, so their fusion weight was set to 0 using the train split.
+`default.yaml` fuses BM25 with much stronger Sentence-BERT embeddings. Re-ranking by SciBERT evidence scores
+(`--set retrieval.rerank_depth=10`) finds more gold papers, but the verdict does not improve: macro-F1 is 67.5 with
+`verisci`. It is therefore off by default for the corpus and always on for live Europe PMC / PubMed results, whose own
+ranking is keyword-based.
 
 ### Components
 
-* **SciBERT rationale selector**: sentence-level F1 **0.691** (P 0.698, R 0.683) on dev evidence and cited
-  abstracts, after 2 epochs (1 h on a 3-thread CPU, negatives down-sampled to 4:1).
-* **SciBERT claim verifier** (3-way, on dev claim–evidence pairs including hard negatives from retrieved abstracts):
-  accuracy **81.1%**, macro-F1 **0.706** (1,172 pairs; best of 3 epochs, 48 min on a 3-thread CPU).
-* **Lite stance model** (Supported vs. Contradicted given gold evidence): accuracy 67.6%, macro-F1 0.612.
+* **SciBERT rationale selector:** sentence-level F1 0.691 (P 0.698, R 0.683) on dev evidence and cited abstracts. It was
+  trained for 2 epochs (about 1 h on a 3-thread CPU) with negatives down-sampled to 4:1.
+* **SciBERT verifier** (3-way, dev claim–evidence pairs including retrieved hard negatives): accuracy 81.1%, macro-F1
+  0.706. With augmentation: 83.0%, 0.725.
+* **Latency on 4 CPU threads:** `verisci` takes about 6–7 s per claim for 5 abstracts, mostly SciBERT sentence scoring
+  and RoBERTa-large inference (a GPU is recommended for interactive use). `lite` takes about 50 ms.
 
----
+## REST API
+
+| Endpoint | Description |
+|---|---|
+| `POST /api/verify` | `{claim, top_k?, explain?, source?: corpus \| europepmc \| pubmed \| custom, documents?}` → verdict, scores, papers with evidence, explanation |
+| `POST /api/verify/stream` | Same request, streamed as server-sent events |
+| `POST /api/verify/batch` | Up to 64 claims |
+| `POST /api/claims/extract` | `{text}` → check-worthy claims found in an article |
+| `GET /api/search?q=` | Search the indexed corpus |
+| `GET /api/documents/{id}` | One abstract |
+| `GET /api/examples` | Labelled SciFact dev claims |
+| `GET /api/reports`, `/api/reports/{name}` | Evaluation reports |
+| `GET /api/info`, `/api/health` | Loaded components, dataset stats, available sources |
+
+The stream sends these events, in order:
+
+1. `stage`: start and done of `retrieval`, `rationale`, `nli` and `explanation`, with timings.
+2. `candidates`: the papers found.
+3. `result`: the verdict and evidence.
+4. `token`: explanation chunks. A `reset` event means the LLM failed and the template took over.
+5. `explanation`: the final text with checked citations.
+6. `done`, or `error` if something went wrong.
+
+```bash
+curl -N -X POST localhost:8000/api/verify/stream -H 'Content-Type: application/json' \
+     -d '{"claim": "Statins reduce major cardiovascular events.", "source": "pubmed"}'
+```
+
+Identical requests are answered from an in-memory cache. Set `NCBI_API_KEY` for higher PubMed rate limits.
 
 ## Evaluation metrics
 
-`python -m claimverifier evaluate --config <config> --split dev` writes `metrics.json`, `predictions.jsonl` and a
-Markdown `report.md` to `reports/<name>_dev/` (the UI's *Evaluation* tab shows them).
+`python -m claimverifier evaluate --config <config> --split dev` writes `metrics.json`, `predictions.jsonl` and
+`report.md` to `reports/<name>_dev/`, which the **Evaluation** page shows.
 
-* **Verdict classification** (claim level, 3 classes): Accuracy, per-class and macro / weighted Precision,
-  Recall and F1, and the confusion matrix. A claim's gold label is SUPPORTED or CONTRADICTED if it has
-  annotated evidence, otherwise INSUFFICIENT_EVIDENCE.
-* **Evidence retrieval** (claims with gold evidence abstracts): **Recall@K** (fraction of gold evidence abstracts
-  in the top K, averaged over claims), Hit@K, Precision@K and **Mean Reciprocal Rank** (MRR, mean of 1 / rank of
-  the first gold abstract).
-* **SciFact abstract-level evaluation** (as in the SciFact paper): an abstract predicted as supporting or
-  contradicting is correct if it is gold evidence with the same label (*label-only*), and additionally, if its
-  predicted sentences contain a complete gold rationale (*rationalized*). Sentence-level selection P/R/F1 is also reported.
+* **Verdict classification** (claim level, 3 classes): accuracy; per-class, macro and weighted precision, recall and F1;
+  and the confusion matrix. A claim's gold label is Supported or Contradicted if it has annotated evidence, and
+  Insufficient Evidence otherwise.
+* **Evidence retrieval** (claims with gold evidence):
+  - **Recall@K**: share of gold evidence abstracts in the top K.
+  - Hit@K and Precision@K.
+  - **MRR**: mean of 1 / rank of the first gold abstract.
+* **SciFact abstract-level evaluation:** a predicted supporting or contradicting abstract is correct if it is gold
+  evidence with the same label (*label-only*). The *rationalized* variant also requires its highlighted sentences to
+  contain a full gold rationale. Sentence-level selection P/R/F1 is reported too.
 
-Calibration (`claimverifier calibrate`) runs on the **train** split by default, so dev results are not tuned on dev.
+Calibration and all decision settings use the **train** split. `python -m claimverifier probe --config <config>` runs
+the 24 plain-language stance probes against the configured NLI model.
 
----
+## Development
 
-## Project structure
+```bash
+make serve                         # backend on :8000 (serves the built UI)
+make web-install && make web-dev   # hot-reloading UI on :5173, proxied to the backend
+make web-build                     # rebuild claimverifier/web/dist
+make test                          # pytest (tiny local models for transformer paths) + vitest
+```
 
 ```
 claimverifier/
-  data/scifact.py          SciFact download (safe tar extraction) and loading
-  retrieval/               Sentence-BERT and LSA embedders, FAISS index, BM25, hybrid retriever
-  rationale.py             Evidence-sentence selection: SciBERT / learned features / zero-shot similarity
-  nli.py                   DeBERTa-v3 (any HF NLI head, label names auto-mapped) and lite stance model
-  aggregation.py           Claim-level verdict and confidence scores
-  explain.py               RAG prompt, LLM backends (transformers / Ollama / OpenAI-compatible), template fallback
-  pipeline.py              ClaimVerifier: retrieval -> rationales -> NLI -> aggregation -> explanation
-  training/                Example builders, SciBERT / DeBERTa fine-tuning loop, lite model training
-  evaluation/              Metrics, end-to-end evaluation and reports, calibration
-  api.py, cli.py           FastAPI service and command-line interface
-app/streamlit_app.py       Web UI
-configs/                   default.yaml (SBERT + SciBERT + DeBERTa-v3 + Qwen), large.yaml (GPU),
-                           scibert.yaml (BM25 + SciBERT x2), lite.yaml (offline)
-docs/screenshot.png        Web UI screenshot
-reports/                   Evaluation reports
-tests/                     pytest suite (runs on a bundled mini SciFact corpus; transformer paths use tiny local models)
+  data/scifact.py        SciFact download (safe extraction) and loading
+  retrieval/             Sentence-BERT / LSA embedders, FAISS index, BM25, hybrid retriever
+  rationale.py           Evidence selection: SciBERT / learned features / zero-shot similarity
+  nli.py                 Transformer NLI (label names auto-mapped) and the lite stance model
+  aggregation.py         Claim-level verdict and confidence
+  explain.py             RAG prompt, streaming LLM backends, template fallback
+  sources.py             Live Europe PMC and PubMed search
+  text.py                Sentence splitting, abstract cleaning, claim extraction
+  pipeline.py            ClaimVerifier: batch and streaming verification, re-ranking
+  training/              Example builders, augmentation, fine-tuning loop, lite models
+  evaluation/            Metrics, evaluation reports, calibration
+  api.py · cli.py        FastAPI service (+ web UI) and command-line interface
+  web/dist/              Built web UI (generated from web/)
+web/src/                 React app: pages/, components/, charts/, hooks/, lib/
+configs/                 lite · scibert · default · large
+reports/                 Evaluation reports shown in the UI
+tests/                   pytest suite on a bundled mini SciFact corpus
 ```
-
-Run the tests with `python -m pytest`. Without PyTorch installed, the transformer tests are skipped.
 
 ### Using your own corpus
 
-Point `data.corpus_path` to a JSONL file with `{"doc_id": int, "title": str, "abstract": [sentences] | str}` per
-line (plain-text abstracts are sentence-split automatically), then rebuild the index with
-`python -m claimverifier index --config <config>`. The trained evidence and NLI models work on any biomedical or
-scientific abstracts.
-
----
+Point `data.corpus_path` at a JSONL file with one `{"doc_id": int, "title": str, "abstract": [sentences] | str}` object
+per line. Plain-text abstracts are sentence-split automatically. Then rebuild the index with
+`python -m claimverifier index --config <config>`.
 
 ## Limitations
 
-* The corpus is 5,183 abstracts (mostly biomedical). A claim about a topic that is not covered will
-  correctly come back as *Insufficient Evidence*, which does not mean the claim is false.
-* The models judge whether the retrieved abstracts entail the claim. They do not assess study quality,
-  sample size or publication bias. Treat the output as a research aid, not medical advice.
-* LLM explanations are constrained to the retrieved evidence and their citations are checked, but they can still
-  paraphrase imperfectly. The verdict itself always comes from the NLI pipeline, never from the LLM.
-* The lite pipeline's stance model is lexical (negation and direction cues), so it misses many contradictions.
-  Use the transformer pipeline for real use.
+* *Insufficient Evidence* means the retrieved papers do not settle the claim, not that it is false.
+* The models judge whether abstracts entail the claim. They do not assess study quality, sample size or publication
+  bias. Treat the output as a research aid, not medical advice, and read the cited papers.
+* Contradictions are the hardest class for every pipeline measured here.
+* Live search depends on the Europe PMC and PubMed APIs being reachable; the indexed corpus works offline.
 
 ## Dataset and license
 
-SciFact is released by the Allen Institute for AI under **CC BY-NC 2.0** (non-commercial use). The dataset is
-downloaded at setup time and is not redistributed in this repository. If you use SciFact, please cite:
+SciFact is released by the Allen Institute for AI under **CC BY-NC 2.0** (non-commercial use). It is downloaded at setup
+time and not redistributed here. If you use it, please cite:
 
 ```bibtex
 @inproceedings{wadden-etal-2020-fact,

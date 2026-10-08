@@ -100,3 +100,33 @@ def cue_counts(text: str) -> dict:
         "inc": sum(t in INCREASE for t in tokens),
         "dec": sum(t in DECREASE for t in tokens),
     }
+
+
+_CLAIM_CUES = re.compile(
+    r"\b(increas\w*|decreas\w*|reduc\w*|lower\w*|rais\w*|caus\w*|prevent\w*|improv\w*|worsen\w*|associat\w*|linked|"
+    r"link|risk|effect\w*|leads?|led|results? in|protect\w*|inhibit\w*|promot\w*|induc\w*|correlat\w*|"
+    r"predict\w*|treat\w*|cure\w*|boost\w*|block\w*|trigger\w*|contribut\w*|impair\w*|enhanc\w*|"
+    r"is required|are required|necessary|essential|important for|is not|are not|does not|do not|no effect)\b",
+    re.I,
+)
+_HEDGES = re.compile(r"\b(we|our|this study|in this paper|here we|methods?|participants were|were recruited)\b", re.I)
+
+
+def extract_claims(text: str, max_claims: int = 20) -> List[dict]:
+    """Pick check-worthy factual statements out of free text (news article, abstract, report).
+
+    Sentences are scored by causal / effect-direction cues, numbers and length; questions, very short
+    sentences and study-procedure sentences ("we recruited ...") are down-weighted.
+    """
+    out = []
+    for i, sent in enumerate(split_sentences(text)):
+        words = sent.split()
+        if len(words) < 5 or sent.endswith("?"):
+            continue
+        cues = len(_CLAIM_CUES.findall(sent))
+        score = min(cues, 3) * 1.0 + 0.5 * bool(numbers(sent)) + (0.5 if 8 <= len(words) <= 40 else 0.0)
+        score -= 1.0 * bool(_HEDGES.search(sent))
+        if cues and score > 1.0:
+            out.append({"index": i, "claim": sent.strip(), "score": round(score, 2)})
+    out.sort(key=lambda c: (-c["score"], c["index"]))
+    return sorted(out[:max_claims], key=lambda c: c["index"])

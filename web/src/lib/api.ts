@@ -40,6 +40,11 @@ export const api = {
     request<ExampleClaim[]>(`/api/examples?n=${n}${seed !== undefined ? `&seed=${seed}` : ""}`),
   reports: () => request<ReportSummary[]>("/api/reports"),
   report: (name: string) => request<{ name: string; metrics: ReportMetrics }>(`/api/reports/${encodeURIComponent(name)}`),
+  extractClaims: (text: string, maxClaims = 20) =>
+    request<{ index: number; claim: string; score: number }[]>("/api/claims/extract", {
+      method: "POST",
+      body: JSON.stringify({ text, max_claims: maxClaims }),
+    }),
   verifyBatch: (claims: string[], topK?: number) =>
     request<VerificationResult[]>("/api/verify/batch", {
       method: "POST",

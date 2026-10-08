@@ -10,6 +10,7 @@ Endpoints (all under ``/api``; the original un-prefixed routes remain as aliases
   POST /api/verify/stream        same, streamed as server-sent events (pipeline stages + explanation tokens)
   POST /api/verify/batch         verify up to 64 claims
   POST /api/verify/custom        verify a claim against abstracts supplied in the request
+  POST /api/claims/extract       pick check-worthy claims out of free text
   GET  /api/search?q=            search the indexed corpus
   GET  /api/documents/{doc_id}   one abstract from the corpus
   GET  /api/examples             labelled SciFact claims
@@ -64,6 +65,11 @@ class BatchVerifyRequest(BaseModel):
     claims: List[str] = Field(..., min_length=1, max_length=64)
     top_k: Optional[int] = Field(None, ge=1, le=20)
     explain: bool = False
+
+
+class ExtractRequest(BaseModel):
+    text: str = Field(..., min_length=10, max_length=50_000)
+    max_claims: int = Field(20, ge=1, le=64)
 
 
 class CustomVerifyRequest(BaseModel):
@@ -296,6 +302,12 @@ def create_app(verifier=None, config_path: Optional[str] = None, eager: Optional
         docs = _to_documents(req.documents)
         with run_lock:
             return v.verify_against(req.claim.strip(), docs, explain=req.explain).to_dict()
+
+    @router.post("/claims/extract")
+    def extract(req: ExtractRequest):
+        from .text import extract_claims
+
+        return extract_claims(req.text, req.max_claims)
 
     @router.get("/search")
     def search(q: str = Query(..., min_length=2, max_length=500), k: int = Query(10, ge=1, le=50)):

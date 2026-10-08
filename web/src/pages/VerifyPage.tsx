@@ -16,6 +16,7 @@ import { useApp } from "../hooks/useApp";
 import { useVerifyStream } from "../hooks/useVerifyStream";
 import { compact } from "../lib/format";
 import type { CustomDocument, SourceName } from "../lib/types";
+import { VERDICT_META } from "../lib/verdict";
 
 const SOURCES: SourceName[] = ["corpus", "europepmc", "pubmed", "custom"];
 const SETTINGS_KEY = "claimverifier.settings.v1";
@@ -140,6 +141,31 @@ export default function VerifyPage() {
           </motion.div>
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.08 }} className="mt-8">
             {input}
+            {history.length > 0 && (
+              <div className="mt-6">
+                <p className="mb-2.5 text-center text-xs text-muted">Recently verified</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {history.slice(0, 3).map((h) => {
+                    const m = VERDICT_META[h.verdict];
+                    const Icon = m.icon;
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => {
+                          setClaim(h.claim);
+                          if (h.result) show(h.result);
+                          else submit(h.claim, h.source === "custom" ? "corpus" : h.source);
+                        }}
+                        className="card flex items-start gap-2.5 p-3 text-left transition-colors hover:border-line-strong"
+                      >
+                        <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: m.color }} aria-label={m.label} />
+                        <span className="line-clamp-2 text-[12.5px] leading-snug text-ink-2">{h.claim}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <ExampleChips onPick={(c) => { setClaim(c); submit(c); }} />
           </motion.div>
         </div>

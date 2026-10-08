@@ -135,3 +135,14 @@ def test_spa_serving(client):
     assert client.get("/assets/app.js").text == "console.log(1)"
     assert client.get("/api/nope").status_code == 404
     assert client.get("/health").json()["status"] == "ok"  # legacy route still works
+
+
+def test_extract_claims_endpoint(client):
+    text = ("Drinking coffee every day may lower the risk of Parkinson disease by 30%. Researchers followed 300,000 adults. "
+            "We recruited participants from five countries. Is coffee healthy? Smoking increases the risk of lung cancer.")
+    claims = client.post("/api/claims/extract", json={"text": text}).json()
+    assert [c["claim"] for c in claims] == [
+        "Drinking coffee every day may lower the risk of Parkinson disease by 30%.",
+        "Smoking increases the risk of lung cancer.",
+    ]
+    assert client.post("/api/claims/extract", json={"text": "short"}).status_code == 422

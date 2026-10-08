@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Check, Download, ExternalLink, FileUp, ListChecks, Play, Square, Wand2, X } from "lucide-react";
+import { Check, Download, ExternalLink, FileUp, ListChecks, Newspaper, Play, Square, Wand2, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -27,6 +27,10 @@ function topEvidence(r: VerificationResult) {
 
 export default function BatchPage() {
   const [text, setText] = useState("");
+  const [mode, setMode] = useState<"claims" | "extract">("claims");
+  const [article, setArticle] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [extractNote, setExtractNote] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [running, setRunning] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -37,6 +41,23 @@ export default function BatchPage() {
   const loadExamples = async () => {
     const ex = await api.examples(20, 11);
     setText(toCSV([["claim", "label"], ...ex.map((e) => [e.claim, e.label])]));
+  };
+
+  const extract = async () => {
+    setExtracting(true);
+    setExtractNote(null);
+    try {
+      const claims = await api.extractClaims(article, 30);
+      if (!claims.length) setExtractNote("No check-worthy claims found. Try text with concrete findings (effects, risks, associations).");
+      else {
+        setText(claims.map((c) => c.claim).join("\n"));
+        setMode("claims");
+      }
+    } catch (e) {
+      setExtractNote((e as Error).message);
+    } finally {
+      setExtracting(false);
+    }
   };
 
   const start = async () => {
@@ -105,7 +126,7 @@ export default function BatchPage() {
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Verify many claims at once</h1>
         <p className="mt-2 max-w-3xl text-[15px] leading-relaxed text-muted">
-          Paste one claim per line, or a CSV with a <code className="kbd">claim</code> column. Add a <code className="kbd">label</code> column
+          Paste one claim per line, a CSV with a <code className="kbd">claim</code> column, or a whole article to extract its claims. Add a <code className="kbd">label</code> column
           (supported / contradicted / insufficient) to benchmark the pipeline on your own data. Up to {MAX} claims per run, checked against the
           indexed corpus.
         </p>
@@ -113,6 +134,38 @@ export default function BatchPage() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="card p-4">
+          <div className="mb-3 flex w-fit rounded-lg border border-line bg-surface-2 p-0.5 text-[12.5px] font-medium" role="tablist" aria-label="Input mode">
+            {([["claims", "Claims list", ListChecks], ["extract", "Extract from text", Newspaper]] as const).map(([k, label, Icon]) => (
+              <button
+                key={k}
+                role="tab"
+                aria-selected={mode === k}
+                onClick={() => setMode(k)}
+                className={clsx("inline-flex items-center gap-1.5 rounded-md px-3 py-1", mode === k ? "bg-surface text-ink shadow-soft" : "text-muted hover:text-ink")}
+              >
+                <Icon className="h-3.5 w-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+          {mode === "extract" ? (
+            <>
+              <textarea
+                value={article}
+                onChange={(e) => setArticle(e.target.value)}
+                rows={8}
+                aria-label="Article text"
+                placeholder="Paste a news article, press release or abstract. Check-worthy scientific statements are pulled out for verification."
+                className="scrollbar-thin w-full resize-y rounded-xl bg-surface-2 p-3.5 text-[13.5px] leading-relaxed outline-none placeholder:text-muted"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {extractNote && <span className="text-xs text-muted">{extractNote}</span>}
+                <Button className="ml-auto" variant="primary" loading={extracting} disabled={article.trim().length < 10} icon={<Wand2 className="h-3.5 w-3.5" />} onClick={extract}>
+                  Extract claims
+                </Button>
+              </div>
+            </>
+          ) : (
+          <>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -146,6 +199,8 @@ export default function BatchPage() {
               <Button variant="primary" icon={<Play className="h-3.5 w-3.5 fill-current" />} disabled={!parsed.length} onClick={start}>Run batch</Button>
             )}
           </div>
+          </>
+          )}
         </div>
 
         <div className="card p-4">

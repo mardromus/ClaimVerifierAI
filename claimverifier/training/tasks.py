@@ -13,7 +13,7 @@ from ..config import Config, resolve_device
 from ..data.scifact import load_claims, load_corpus
 from ..evaluation.metrics import best_threshold, binary_prf, classification_metrics
 from ..labels import LABEL2ID, LABELS, normalize_model_label
-from .examples import build_nli_examples, build_rationale_examples
+from .examples import augment_nli_examples, build_nli_examples, build_rationale_examples
 from .transformer_trainer import TrainingArgs, finetune_pair_classifier
 
 logger = logging.getLogger(__name__)
@@ -93,12 +93,14 @@ def nli_head_mapping(model_name: str) -> Optional[Dict[str, int]]:
 
 
 def train_nli_model(cfg: Config, base_model: Optional[str] = None, output_dir: Optional[str] = None,
-                    args: Optional[TrainingArgs] = None, balanced: bool = True, retrieval_negatives: int = 0) -> Dict:
+                    args: Optional[TrainingArgs] = None, balanced: bool = True, retrieval_negatives: int = 0,
+                    augment: bool = False) -> Dict:
     """Fine-tune an NLI model (default: DeBERTa-v3 MNLI/FEVER/ANLI) on SciFact claim-evidence pairs.
 
     If the base model already has an entailment/neutral/contradiction head, it is kept (transfer
     from MNLI); otherwise a new SUPPORTED/CONTRADICTED/INSUFFICIENT_EVIDENCE head is trained.
     ``retrieval_negatives=k`` adds INSUFFICIENT_EVIDENCE examples from each claim's top-k retrieved abstracts.
+    ``augment`` adds direction-flipped (contradicted) and paraphrased claims to the training set.
     """
     corpus, train_claims, dev_claims = _load_data(cfg)
     base_model = base_model or cfg.nli.base_model or cfg.nli.model_name
@@ -113,6 +115,10 @@ def train_nli_model(cfg: Config, base_model: Optional[str] = None, output_dir: O
                                retrieved=train_ret)
     dev = build_nli_examples(dev_claims, corpus, include_title=cfg.nli.include_title, seed=args.seed,
                              retrieved=dev_ret)
+    if augment:
+        extra = augment_nli_examples(train, seed=args.seed)
+        logger.info("Augmentation added %d examples %s", len(extra), dict(Counter(e.label for e in extra)))
+        train = train + extra
     logger.info("NLI examples: train=%d %s, dev=%d %s", len(train), dict(Counter(e.label for e in train)),
                 len(dev), dict(Counter(e.label for e in dev)))
 

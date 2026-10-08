@@ -5,6 +5,7 @@ __pycache__/
 .eggs/
 build/
 dist/
+!claimverifier/web/dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -26,5 +27,5 @@ models/
 .DS_Store
 ._*
 
-# Streamlit
-.streamlit/secrets.toml
+# Frontend
+web/node_modules/

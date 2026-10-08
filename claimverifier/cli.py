@@ -120,7 +120,7 @@ def cmd_train_nli(args):
     ta = _training_args(args, {"max_length": 256, "learning_rate": 1e-5, "epochs": 3, "batch_size": 8,
                                "grad_accum": 2})
     info = train_nli_model(cfg, args.base_model, args.output, ta, balanced=not args.no_balance,
-                           retrieval_negatives=args.retrieval_negatives)
+                           retrieval_negatives=args.retrieval_negatives, augment=args.augment)
     print(json.dumps({k: info[k] for k in ("best_epoch", "best_score", "history")}, indent=2))
 
 
@@ -229,6 +229,11 @@ def cmd_serve(args):
         os.environ["CLAIMVERIFIER_CONFIG"] = args.config
     if args.set:
         os.environ["CLAIMVERIFIER_OVERRIDES"] = json.dumps(args.set)
+    from .api import WEB_DIST
+
+    shown_host = "localhost" if args.host in ("0.0.0.0", "127.0.0.1") else args.host
+    ui = "web UI" if (WEB_DIST / "index.html").exists() else "API (web UI not built: `make web-build`)"
+    print(f"ClaimVerifier AI {ui} -> http://{shown_host}:{args.port}   (API docs: /docs)")
     uvicorn.run("claimverifier.api:app", host=args.host, port=args.port, log_level="info")
 
 
@@ -277,6 +282,8 @@ def build_parser() -> argparse.ArgumentParser:
                            help="down-sample negatives to this many per positive (faster training)")
         else:
             p.add_argument("--no-balance", action="store_true", help="disable class-balanced loss")
+            p.add_argument("--augment", action="store_true",
+                           help="add direction-flipped (contradicted) and paraphrased claims to the training data")
         p.add_argument("--retrieval-negatives", type=int, default=0, metavar="K",
                        help="add each claim's top-K retrieved abstracts as hard negatives")
         p.set_defaults(func=func)
@@ -304,7 +311,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=None)
     p.set_defaults(func=cmd_calibrate)
 
-    p = sub.add_parser("serve", parents=[common], help="start the REST API")
+    p = sub.add_parser("serve", parents=[common], help="start the web UI and REST API")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
     p.set_defaults(func=cmd_serve)

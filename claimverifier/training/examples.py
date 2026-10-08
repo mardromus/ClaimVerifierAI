@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
 from ..data.scifact import Claim, Document
-from ..labels import INSUFFICIENT
+from ..labels import CONTRADICTED, INSUFFICIENT, SUPPORTED
 from ..text import content_words
 
 
@@ -122,3 +123,71 @@ def build_nli_examples(claims: Sequence[Claim], corpus: Sequence[Document], incl
             examples.append(NLIExample(format_premise([doc.sentences[i] for i in chosen], title),
                                        claim.claim, INSUFFICIENT, claim.id, doc_id))
     return examples
+
+
+# ---------------------------------------------------------------------------- augmentation
+
+# Antonym pairs for effect direction (both directions are added below).
+_ANTONYMS = {
+    "increase": "decrease", "increases": "decreases", "increased": "decreased", "increasing": "decreasing",
+    "higher": "lower", "raises": "lowers", "raised": "lowered", "raise": "lower",
+    "promotes": "inhibits", "promoted": "inhibited", "promote": "inhibit", "promoting": "inhibiting",
+    "upregulates": "downregulates", "upregulated": "downregulated", "upregulation": "downregulation",
+    "improves": "worsens", "improved": "worsened", "improve": "worsen",
+    "enhances": "impairs", "enhanced": "impaired", "enhance": "impair",
+    "accelerates": "slows", "accelerated": "slowed", "more": "less", "greater": "smaller",
+    "activates": "inhibits", "activated": "inhibited", "positively": "negatively", "positive": "negative",
+    "elevated": "reduced", "reduces": "increases", "reduce": "increase", "reducing": "increasing",
+    "declines": "rises", "declined": "rose", "longer": "shorter", "gain": "loss", "stimulates": "suppresses", "stimulated": "suppressed",
+}
+ANTONYMS: Dict[str, str] = {**_ANTONYMS, **{v: k for k, v in _ANTONYMS.items() if v not in _ANTONYMS}}
+
+# Same-direction paraphrases (label-preserving).
+_SYNONYM_GROUPS = [
+    ["reduces", "decreases", "lowers", "diminishes", "lessens"],
+    ["reduced", "decreased", "lowered", "diminished"],
+    ["reduce", "decrease", "lower", "diminish"],
+    ["increases", "raises", "elevates", "boosts"],
+    ["increased", "raised", "elevated", "boosted"],
+    ["increase", "raise", "elevate", "boost"],
+    ["inhibits", "suppresses", "blocks"],
+    ["inhibited", "suppressed", "blocked"],
+    ["promotes", "stimulates", "drives"],
+    ["improves", "ameliorates"],
+    ["impairs", "compromises"],
+]
+SYNONYMS: Dict[str, List[str]] = {w: [x for x in g if x != w] for g in _SYNONYM_GROUPS for w in g}
+_NEGATION_RE = re.compile(r"\b(no|not|never|without|n't|unrelated|independent|none)\b", re.I)
+
+
+def _swap_first(text: str, mapping: Dict[str, object], choose) -> Optional[str]:
+    for m in re.finditer(r"[A-Za-z]+", text):
+        word = m.group(0)
+        key = word.lower()
+        if key in mapping:
+            new = choose(mapping[key])
+            if word[0].isupper():
+                new = new[0].upper() + new[1:]
+            return text[:m.start()] + new + text[m.end():]
+    return None
+
+
+def augment_nli_examples(examples: Sequence[NLIExample], seed: int = 42) -> List[NLIExample]:
+    """Direction-aware augmentation for claim verification (returns only the new examples).
+
+    * Flip the effect direction of a *supported* claim without negation ("X reduces Y" -> "X increases Y"):
+      the same evidence now contradicts it.
+    * Paraphrase the direction word with a same-direction synonym ("reduces" -> "lowers"): label unchanged.
+    """
+    rng = np.random.default_rng(seed)
+    out: List[NLIExample] = []
+    for e in examples:
+        if e.label == SUPPORTED and not _NEGATION_RE.search(e.hypothesis):
+            flipped = _swap_first(e.hypothesis, ANTONYMS, lambda v: v)
+            if flipped:
+                out.append(NLIExample(e.premise, flipped, CONTRADICTED, e.claim_id, e.doc_id))
+        if e.label in (SUPPORTED, CONTRADICTED):
+            para = _swap_first(e.hypothesis, SYNONYMS, lambda v: v[int(rng.integers(len(v)))])
+            if para:
+                out.append(NLIExample(e.premise, para, e.label, e.claim_id, e.doc_id))
+    return out

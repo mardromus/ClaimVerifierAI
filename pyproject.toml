@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claimverifier"
-version = "1.0.0"
+version = "1.1.0"
 description = "Scientific claim verification with semantic retrieval, scientific NLI and LLM-generated explanations (SciFact)."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -26,7 +26,7 @@ transformers = [
     "sentencepiece>=0.1.99",
     "protobuf>=4.25",
 ]
-serve = ["fastapi>=0.110", "uvicorn>=0.29", "streamlit>=1.35"]
+serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 dev = ["pytest>=8.0", "httpx>=0.27"]
 
 [project.scripts]
@@ -34,6 +34,9 @@ claimverifier = "claimverifier.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["claimverifier*"]
+
+[tool.setuptools.package-data]
+claimverifier = ["web/dist/*", "web/dist/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

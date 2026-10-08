@@ -135,3 +135,67 @@ def test_openai_compatible_backend(fake_server):
     path, headers, body = received[0]
     assert path == "/v1/chat/completions" and body["max_tokens"] == 20
     assert headers.get("Authorization") == "Bearer secret"
+
+
+def test_template_streaming_reassembles_text():
+    gen = ExplanationGenerator(ExplanationConfig(backend="template"))
+    events = list(gen.stream("claim", SUPPORTED, 0.9, EVIDENCE))
+    tokens = "".join(p for k, p in events if k == "token")
+    assert events[-1][0] == "final" and tokens == events[-1][1].text
+
+
+def test_stream_falls_back_with_reset():
+    class Broken(LLMBackend):
+        name = "broken"
+
+        def stream_chat(self, messages, max_new_tokens, temperature):
+            raise ConnectionError("down")
+            yield  # pragma: no cover
+
+    events = list(ExplanationGenerator(ExplanationConfig(backend="ollama"), backend=Broken()).stream("c", SUPPORTED, 1, EVIDENCE))
+    kinds = [k for k, _ in events]
+    assert kinds[0] == "reset" and kinds[-1] == "final" and events[-1][1].backend.startswith("template")
+
+
+def test_stream_keeps_partial_answer():
+    class Flaky(LLMBackend):
+        name = "flaky"
+
+        def stream_chat(self, messages, max_new_tokens, temperature):
+            yield "Supported by [1]"
+            raise TimeoutError("cut")
+
+    events = list(ExplanationGenerator(ExplanationConfig(backend="ollama"), backend=Flaky()).stream("c", SUPPORTED, 1, EVIDENCE))
+    final = events[-1][1]
+    assert final.text.startswith("Supported by [1]") and "interrupted" in final.error
+
+
+@pytest.fixture()
+def streaming_server():
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if self.path == "/api/chat":
+                lines = [{"message": {"content": "Hel"}, "done": False}, {"message": {"content": "lo [1]"}, "done": False},
+                         {"message": {"content": ""}, "done": True}]
+                body = "".join(json.dumps(x) + "\n" for x in lines).encode()
+            else:
+                chunks = [{"choices": [{"delta": {"content": "Hi"}}]}, {"choices": [{"delta": {"content": " [1]"}}]}]
+                body = ("".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n").encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+
+
+def test_ollama_and_openai_token_streams(streaming_server):
+    assert list(OllamaLLM("m", streaming_server).stream_chat([], 10, 0)) == ["Hel", "lo [1]"]
+    assert list(OpenAICompatibleLLM("m", f"{streaming_server}/v1").stream_chat([], 10, 0)) == ["Hi", " [1]"]

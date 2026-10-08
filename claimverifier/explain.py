@@ -16,7 +16,7 @@ import os
 import re
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from .labels import CONTRADICTED, DISPLAY_NAMES, INSUFFICIENT, SUPPORTED
 
@@ -151,6 +151,14 @@ class LLMBackend:
     def chat(self, messages: List[Dict[str, str]], max_new_tokens: int, temperature: float) -> str:
         raise NotImplementedError
 
+    def stream_chat(self, messages: List[Dict[str, str]], max_new_tokens: int, temperature: float) -> Iterator[str]:
+        """Yield the response in chunks (backends without native streaming yield it in one piece)."""
+        yield self.chat(messages, max_new_tokens, temperature)
+
+    @property
+    def label(self) -> str:
+        return f"{self.name}:{getattr(self, 'model_name', getattr(self, 'model', ''))}"
+
 
 class TransformersChatLLM(LLMBackend):
     """Local Hugging Face chat model, e.g. Qwen/Qwen2.5-1.5B-Instruct or meta-llama/Meta-Llama-3-8B-Instruct."""
@@ -175,9 +183,7 @@ class TransformersChatLLM(LLMBackend):
         self.model.to(device)
         self.model.eval()
 
-    def chat(self, messages, max_new_tokens, temperature):
-        import torch
-
+    def _inputs(self, messages, max_new_tokens, temperature):
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to(self.device)
         pad_id = self.tokenizer.pad_token_id
@@ -185,10 +191,43 @@ class TransformersChatLLM(LLMBackend):
                       "pad_token_id": pad_id if pad_id is not None else self.tokenizer.eos_token_id}
         if temperature > 0:
             gen_kwargs.update(temperature=temperature, top_p=0.9)
+        return inputs, gen_kwargs
+
+    def chat(self, messages, max_new_tokens, temperature):
+        import torch
+
+        inputs, gen_kwargs = self._inputs(messages, max_new_tokens, temperature)
         with torch.inference_mode():
             output = self.model.generate(**inputs, **gen_kwargs)
         new_tokens = output[0, inputs["input_ids"].shape[1]:]
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+
+    def stream_chat(self, messages, max_new_tokens, temperature):
+        import threading
+
+        import torch
+        from transformers import TextIteratorStreamer
+
+        inputs, gen_kwargs = self._inputs(messages, max_new_tokens, temperature)
+        streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True, timeout=600)
+        errors: List[BaseException] = []
+
+        def run():
+            try:
+                with torch.inference_mode():
+                    self.model.generate(**inputs, **gen_kwargs, streamer=streamer)
+            except BaseException as e:  # noqa: BLE001 - surfaced to the consumer below
+                errors.append(e)
+                streamer.end()
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        for text in streamer:
+            if text:
+                yield text
+        thread.join()
+        if errors:
+            raise errors[0]
 
 
 def _post_json(url: str, payload: dict, timeout: float, headers: Optional[Dict[str, str]] = None) -> dict:
@@ -197,6 +236,18 @@ def _post_json(url: str, payload: dict, timeout: float, headers: Optional[Dict[s
                                      headers={"Content-Type": "application/json", **(headers or {})})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _post_lines(url: str, payload: dict, timeout: float, headers: Optional[Dict[str, str]] = None) -> Iterator[str]:
+    """POST JSON and yield the response body line by line (NDJSON / server-sent events)."""
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=data, method="POST",
+                                     headers={"Content-Type": "application/json", **(headers or {})})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        for raw in response:
+            line = raw.decode("utf-8").strip()
+            if line:
+                yield line
 
 
 class OllamaLLM(LLMBackend):
@@ -211,6 +262,19 @@ class OllamaLLM(LLMBackend):
         payload = {"model": self.model, "messages": messages, "stream": False,
                    "options": {"temperature": temperature, "num_predict": max_new_tokens}}
         return _post_json(f"{self.url}/api/chat", payload, self.timeout)["message"]["content"]
+
+    def stream_chat(self, messages, max_new_tokens, temperature):
+        payload = {"model": self.model, "messages": messages, "stream": True,
+                   "options": {"temperature": temperature, "num_predict": max_new_tokens}}
+        for line in _post_lines(f"{self.url}/api/chat", payload, self.timeout):
+            chunk = json.loads(line)
+            if chunk.get("error"):
+                raise RuntimeError(chunk["error"])
+            text = (chunk.get("message") or {}).get("content", "")
+            if text:
+                yield text
+            if chunk.get("done"):
+                break
 
 
 class OpenAICompatibleLLM(LLMBackend):
@@ -227,6 +291,21 @@ class OpenAICompatibleLLM(LLMBackend):
                    "temperature": temperature}
         response = _post_json(f"{self.base_url}/chat/completions", payload, self.timeout, headers)
         return response["choices"][0]["message"]["content"]
+
+    def stream_chat(self, messages, max_new_tokens, temperature):
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        payload = {"model": self.model, "messages": messages, "max_tokens": max_new_tokens,
+                   "temperature": temperature, "stream": True}
+        for line in _post_lines(f"{self.base_url}/chat/completions", payload, self.timeout, headers):
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            choices = json.loads(data).get("choices") or [{}]
+            text = (choices[0].get("delta") or {}).get("content") or ""
+            if text:
+                yield text
 
 
 class ExplanationGenerator:
@@ -263,27 +342,61 @@ class ExplanationGenerator:
             raise RuntimeError(self._backend_error) from e
         return self._backend
 
-    def generate(self, claim: str, verdict: str, confidence: float, evidence: List[EvidenceForPrompt],
-                 mixed: bool = False) -> Explanation:
+    def stream(self, claim: str, verdict: str, confidence: float, evidence: List[EvidenceForPrompt],
+               mixed: bool = False) -> Iterator[Tuple[str, object]]:
+        """Yield ``("token", text)`` chunks as the explanation is produced, then ``("final", Explanation)``.
+
+        The final explanation has its citations checked; if the LLM fails before producing any text,
+        the deterministic template explanation is streamed instead.
+        """
         evidence = evidence[: self.cfg.max_evidence]
         if self.cfg.backend == "none":
-            return Explanation(text="", backend="none")
+            yield "final", Explanation(text="", backend="none")
+            return
         if self.cfg.backend == "template":
-            return template_explanation(claim, verdict, confidence, evidence, mixed)
+            yield from _stream_template(template_explanation(claim, verdict, confidence, evidence, mixed))
+            return
+        parts: List[str] = []
+        backend = None
         try:
             backend = self._get_backend()
             messages = build_messages(claim, verdict, confidence, evidence, mixed)
-            raw = backend.chat(messages, self.cfg.max_new_tokens, self.cfg.temperature)
-            if not raw or not raw.strip():
+            for chunk in backend.stream_chat(messages, self.cfg.max_new_tokens, self.cfg.temperature):
+                parts.append(chunk)
+                yield "token", chunk
+            if not "".join(parts).strip():
                 raise RuntimeError("LLM returned an empty response")
-            result = postprocess(raw, evidence)
-            result.backend = f"{backend.name}:{getattr(backend, 'model_name', getattr(backend, 'model', ''))}"
-            return result
         except Exception as e:  # noqa: BLE001
             if not self.cfg.fallback_to_template:
                 raise
+            if parts and "".join(parts).strip():  # keep the partial answer rather than switching mid-stream
+                result = postprocess("".join(parts), evidence)
+                result.backend = backend.label if backend else "llm"
+                result.error = f"generation interrupted: {e}"
+                yield "final", result
+                return
             logger.warning("LLM explanation failed (%s); using template explanation", e)
-            result = template_explanation(claim, verdict, confidence, evidence, mixed)
-            result.backend = "template (LLM unavailable)"
-            result.error = str(e)
-            return result
+            fallback = template_explanation(claim, verdict, confidence, evidence, mixed)
+            fallback.backend = "template (LLM unavailable)"
+            fallback.error = str(e)
+            yield "reset", None
+            yield from _stream_template(fallback)
+            return
+        result = postprocess("".join(parts), evidence)
+        result.backend = backend.label
+        yield "final", result
+
+    def generate(self, claim: str, verdict: str, confidence: float, evidence: List[EvidenceForPrompt],
+                 mixed: bool = False) -> Explanation:
+        final = None
+        for kind, payload in self.stream(claim, verdict, confidence, evidence, mixed):
+            if kind == "final":
+                final = payload
+        return final
+
+
+def _stream_template(explanation: Explanation, words_per_chunk: int = 3) -> Iterator[Tuple[str, object]]:
+    words = re.split(r"(\s+)", explanation.text)
+    for i in range(0, len(words), 2 * words_per_chunk):
+        yield "token", "".join(words[i:i + 2 * words_per_chunk])
+    yield "final", explanation

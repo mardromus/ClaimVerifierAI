@@ -17,7 +17,6 @@ protobuf>=4.25
 # Serving
 fastapi>=0.110
 uvicorn>=0.29
-streamlit>=1.35
 
 # Testing
 pytest>=8.0

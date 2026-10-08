@@ -12,7 +12,8 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional, Sequence
+from dataclasses import replace as dataclass_replace
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -56,6 +57,8 @@ class DocumentResult:
     evidence: List[EvidenceSentence]
     sentences: List[str]
     sentence_scores: List[float]
+    retrieval_rank: int = 0    # rank given by the retriever before re-ranking
+    meta: Dict = field(default_factory=dict)  # journal, year, authors, source, ... (live / custom documents)
 
 
 @dataclass
@@ -74,6 +77,8 @@ class VerificationResult:
     citations: List[int] = field(default_factory=list)
     timings_ms: Dict[str, float] = field(default_factory=dict)
     components: Dict[str, Dict] = field(default_factory=dict)
+    source: str = "corpus"
+    candidates_scanned: int = 0
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -97,6 +102,12 @@ def shown_documents(result: "VerificationResult") -> List["DocumentResult"]:
     """Abstracts that contribute to the verdict, strongest first."""
     docs = [d for d in result.documents if d.evidence_weight >= MIN_SHOWN_WEIGHT]
     return sorted(docs, key=lambda d: -evidence_strength(d))
+
+
+def _preview(r: RetrievedDoc) -> Dict:
+    return {"doc_id": r.doc.doc_id, "title": r.doc.title, "url": r.doc.url, "rank": r.rank,
+            "dense_score": round(r.dense_score, 4), "bm25_score": round(r.bm25_score, 3), "meta": dict(r.doc.meta),
+            "num_sentences": len(r.doc.sentences)}
 
 
 def _probs_dict(p: Sequence[float]) -> Dict[str, float]:
@@ -179,17 +190,141 @@ class ClaimVerifier:
     def verify_against(self, claim: str, documents: List[Document], explain: bool = True) -> VerificationResult:
         """Verify a claim against user-supplied abstracts instead of the indexed corpus."""
         retrieved = [RetrievedDoc(doc=d, rank=i + 1, score=0.0, dense_score=0.0) for i, d in enumerate(documents)]
-        return self._analyze([claim], [retrieved], explain=explain, sentence_stance=True)[0]
+        result = self._analyze([claim], [retrieved], explain=explain, sentence_stance=True)[0]
+        result.source, result.candidates_scanned = "custom", len(documents)
+        return result
 
     def verify_batch(self, claims: List[str], top_k: Optional[int] = None, explain: bool = False,
                      sentence_stance: bool = True) -> List[VerificationResult]:
-        t0 = time.perf_counter()
-        retrieved = self.retriever.search_batch(claims, top_k or self.cfg.retrieval.top_k)
-        retrieval_ms = (time.perf_counter() - t0) * 1000 / max(len(claims), 1)
-        results = self._analyze(claims, retrieved, explain=explain, sentence_stance=sentence_stance)
+        retrieved, scores, timings = self.retrieve_and_score(claims, top_k)
+        results = self._analyze(claims, retrieved, explain=explain, sentence_stance=sentence_stance,
+                                rationale_scores=scores)
+        depth = self.retrieval_depth(top_k)
         for r in results:
-            r.timings_ms = {"retrieval": round(retrieval_ms, 1), **r.timings_ms}
+            r.timings_ms = {**timings, **r.timings_ms}
+            r.candidates_scanned = depth
         return results
+
+    # ------------------------------------------------------------------ retrieval + re-ranking
+    def retrieval_depth(self, top_k: Optional[int] = None) -> int:
+        return max(top_k or self.cfg.retrieval.top_k, self.cfg.retrieval.rerank_depth)
+
+    def retrieve_and_score(self, claims: List[str], top_k: Optional[int] = None):
+        """Retrieve abstracts, score their sentences with the rationale selector and (optionally) re-rank.
+
+        Returns ``(retrieved, rationale_scores, timings_ms)`` with ``top_k`` abstracts per claim.
+        """
+        top_k = top_k or self.cfg.retrieval.top_k
+        n = max(len(claims), 1)
+        t0 = time.perf_counter()
+        retrieved = self.retriever.search_batch(claims, self.retrieval_depth(top_k))
+        t1 = time.perf_counter()
+        scores = self.score_rationales(claims, retrieved)
+        retrieved, scores = self.rerank(retrieved, scores, top_k)
+        t2 = time.perf_counter()
+        return retrieved, scores, {"retrieval": round((t1 - t0) * 1000 / n, 1),
+                                   "rationale": round((t2 - t1) * 1000 / n, 1)}
+
+    def rerank(self, retrieved: List[List[RetrievedDoc]], scores: List[np.ndarray], top_k: int):
+        """Keep, per claim, the ``top_k`` abstracts with the strongest evidence sentence.
+
+        score(d) = max_s P(rationale | claim, s) + rerank_weight * (1 - (rank(d) - 1) / n)
+        """
+        weight = self.cfg.retrieval.rerank_weight
+        out_docs, out_scores, offset = [], [], 0
+        for docs in retrieved:
+            doc_scores = scores[offset:offset + len(docs)]
+            offset += len(docs)
+            n = len(docs)
+            if n <= top_k:
+                out_docs.append(docs)
+                out_scores.extend(doc_scores)
+                continue
+            key = [(float(sc.max()) if len(sc) else 0.0) + weight * (1 - i / n) for i, sc in enumerate(doc_scores)]
+            order = sorted(range(n), key=lambda i: (-key[i], i))[:top_k]
+            out_docs.append([dataclass_replace(docs[i], rank=j + 1, retrieval_rank=docs[i].rank)
+                             for j, i in enumerate(order)])
+            out_scores.extend(doc_scores[i] for i in order)
+        return out_docs, out_scores
+
+    # ------------------------------------------------------------------ streaming
+    def verify_stream(self, claim: str, top_k: Optional[int] = None, explain: bool = True,
+                      source=None, documents: Optional[List[Document]] = None) -> Iterator[Tuple[str, Dict]]:
+        """Run the pipeline for one claim, yielding ``(event, data)`` tuples as each stage completes.
+
+        Events: ``stage`` (start / done of retrieval, rationale, nli, explanation), ``candidates`` (papers
+        found), ``result`` (verdict + evidence), ``token`` / ``reset`` / ``explanation`` (streamed
+        explanation) and ``done``. ``source`` is a live :class:`~claimverifier.sources.LiteratureSource`;
+        ``documents`` are user-supplied abstracts. Without either, the indexed corpus is searched.
+        """
+        top_k = top_k or self.cfg.retrieval.top_k
+        start = time.perf_counter()
+        source_label = (source.label if source is not None else
+                        "Your abstracts" if documents is not None else "Indexed corpus")
+        source_key = source.name if source is not None else ("custom" if documents is not None else "corpus")
+        yield "stage", {"stage": "retrieval", "status": "start", "source": source_label}
+        t0 = time.perf_counter()
+        if documents is not None:
+            retrieved = [RetrievedDoc(doc=d, rank=i + 1, score=0.0, dense_score=0.0) for i, d in enumerate(documents)]
+        elif source is not None:
+            docs = source.search(claim, max(self.cfg.sources.fetch_size, top_k))
+            retrieved = self._live_candidates(claim, docs)
+        else:
+            retrieved = self.retriever.search_batch([claim], self.retrieval_depth(top_k))[0]
+        retrieval_ms = (time.perf_counter() - t0) * 1000
+        yield "stage", {"stage": "retrieval", "status": "done", "ms": round(retrieval_ms, 1), "count": len(retrieved)}
+        yield "candidates", {"documents": [_preview(r) for r in retrieved]}
+        if not retrieved:
+            raise LookupError(f"No abstracts found in {source_label} for this claim.")
+
+        yield "stage", {"stage": "rationale", "status": "start", "count": len(retrieved)}
+        t0 = time.perf_counter()
+        scores = self.score_rationales([claim], [retrieved])
+        if documents is None:
+            kept, scores = self.rerank([retrieved], scores, top_k)
+            kept = kept[0]
+        else:
+            kept = retrieved
+        rationale_ms = (time.perf_counter() - t0) * 1000
+        yield "stage", {"stage": "rationale", "status": "done", "ms": round(rationale_ms, 1),
+                        "sentences": int(sum(len(r.doc.sentences) for r in retrieved)), "kept": len(kept)}
+
+        yield "stage", {"stage": "nli", "status": "start", "count": len(kept)}
+        t0 = time.perf_counter()
+        result = self._analyze([claim], [kept], explain=False, sentence_stance=True, rationale_scores=scores)[0]
+        nli_ms = (time.perf_counter() - t0) * 1000
+        result.source, result.candidates_scanned = source_key, len(retrieved)
+        result.timings_ms = {"retrieval": round(retrieval_ms, 1), "rationale": round(rationale_ms, 1),
+                             "nli": round(nli_ms, 1)}
+        yield "stage", {"stage": "nli", "status": "done", "ms": round(nli_ms, 1)}
+        yield "result", result.to_dict()
+
+        if explain and self.explainer.backend_name != "none":
+            yield "stage", {"stage": "explanation", "status": "start", "backend": self.explainer.backend_name}
+            t0 = time.perf_counter()
+            for kind, payload in self.explainer.stream(claim, result.verdict, result.confidence,
+                                                       self.evidence_for_prompt(result), result.mixed_evidence):
+                if kind == "token":
+                    yield "token", {"text": payload}
+                elif kind == "reset":
+                    yield "reset", {}
+                else:
+                    result.explanation, result.explanation_backend = payload.text, payload.backend
+                    result.citations = payload.citations
+                    yield "explanation", {"text": payload.text, "backend": payload.backend,
+                                          "citations": payload.citations, "error": payload.error}
+            result.timings_ms["explanation"] = round((time.perf_counter() - t0) * 1000, 1)
+            yield "stage", {"stage": "explanation", "status": "done", "ms": result.timings_ms["explanation"]}
+        yield "done", {"timings_ms": result.timings_ms,
+                       "total_ms": round((time.perf_counter() - start) * 1000, 1)}
+
+    def _live_candidates(self, claim: str, docs: List[Document]) -> List[RetrievedDoc]:
+        if not docs:
+            return []
+        emb = self.retriever.embedder
+        cos = emb.encode([d.full_text for d in docs]) @ emb.encode([claim])[0]
+        return [RetrievedDoc(doc=d, rank=i + 1, score=float(c), dense_score=float(c)) for i, (d, c) in
+                enumerate(zip(docs, cos))]
 
     # ------------------------------------------------------------------ core
     def score_rationales(self, claims: List[str], retrieved: List[List[RetrievedDoc]]) -> List[np.ndarray]:
@@ -205,9 +340,13 @@ class ClaimVerifier:
         n_claims = max(len(claims), 1)
 
         # 1) rationale scores for every sentence of every retrieved abstract
-        t0 = time.perf_counter()
-        all_scores = rationale_scores if rationale_scores is not None else self.score_rationales(claims, retrieved)
-        rationale_ms = (time.perf_counter() - t0) * 1000 / n_claims
+        timings: Dict[str, float] = {}
+        if rationale_scores is None:
+            t0 = time.perf_counter()
+            all_scores = self.score_rationales(claims, retrieved)
+            timings["rationale"] = round((time.perf_counter() - t0) * 1000 / n_claims, 1)
+        else:
+            all_scores = rationale_scores
 
         # 2) select evidence sentences and build NLI inputs
         selections, doc_pairs, sent_pairs = [], [], []
@@ -229,7 +368,7 @@ class ClaimVerifier:
         t0 = time.perf_counter()
         doc_probs = self.nli.predict(doc_pairs) if doc_pairs else np.zeros((0, len(LABELS)))
         sent_probs = self.nli.predict(sent_pairs) if sent_pairs else np.zeros((0, len(LABELS)))
-        nli_ms = (time.perf_counter() - t0) * 1000 / n_claims
+        timings["nli"] = round((time.perf_counter() - t0) * 1000 / n_claims, 1)
 
         # 4) aggregate + 5) explain
         results, di, si = [], 0, 0
@@ -258,13 +397,14 @@ class ClaimVerifier:
                     evidence_weight=float(min(1.0, relevance / max(threshold, 1e-6))),
                     stance=doc_stance(p), stance_probs=_probs_dict(p),
                     evidence=evidence, sentences=list(r.doc.sentences),
-                    sentence_scores=[round(float(s), 4) for s in scores]))
+                    sentence_scores=[round(float(s), 4) for s in scores],
+                    retrieval_rank=r.retrieval_rank or r.rank, meta=dict(r.doc.meta)))
             verdict = aggregate(relevances, probs_list, threshold, nei_weight, self.cfg.aggregation.min_relevance)
             result = VerificationResult(
                 claim=claim, verdict=verdict.label, verdict_display=DISPLAY_NAMES[verdict.label],
                 confidence=verdict.confidence, scores=verdict.scores, support_strength=verdict.support_strength,
                 contradict_strength=verdict.contradict_strength, mixed_evidence=verdict.mixed, documents=documents,
-                timings_ms={"rationale": round(rationale_ms, 1), "nli": round(nli_ms, 1)}, components=components)
+                timings_ms=dict(timings), components=components)
             if explain:
                 t0 = time.perf_counter()
                 exp = self.explainer.generate(claim, verdict.label, verdict.confidence,

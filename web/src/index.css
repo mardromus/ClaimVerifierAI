@@ -1,0 +1,212 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ design tokens
+   Verdict colors (teal / red / violet) and chart series (blue / orange / aqua) were run through the
+   dataviz palette validator for both themes: all pairs pass colour-vision-deficiency separation and the
+   normal-vision floor; verdicts always ship with an icon + label as well. */
+:root {
+  color-scheme: light;
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #f2f2ef;
+  --surface-3: #e9e9e5;
+  --border: rgba(12, 12, 10, 0.09);
+  --border-strong: rgba(12, 12, 10, 0.16);
+  --text: #0c0c0b;
+  --text-2: #3d3d39;
+  --muted: #74736d;
+  --accent: #2f5bea;
+  --accent-ink: #2449c4;
+  --accent-soft: rgba(47, 91, 234, 0.1);
+  --ring: rgba(47, 91, 234, 0.35);
+
+  --sup: #0f8f7f;
+  --con: #e0453f;
+  --nei: #6e56cf;
+  --sup-ink: #0a6d61;
+  --con-ink: #b8312c;
+  --nei-ink: #5741b4;
+  --sup-soft: rgba(15, 143, 127, 0.12);
+  --con-soft: rgba(224, 69, 63, 0.11);
+  --nei-soft: rgba(110, 86, 207, 0.12);
+
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --seq-0: #f3f7fd;
+  --seq-1: #1c5cab;
+
+  --shadow-sm: 0 1px 2px rgba(12, 12, 10, 0.05);
+  --shadow: 0 1px 2px rgba(12, 12, 10, 0.04), 0 8px 24px -12px rgba(12, 12, 10, 0.12);
+  --shadow-lg: 0 2px 4px rgba(12, 12, 10, 0.04), 0 24px 48px -24px rgba(12, 12, 10, 0.25);
+  --glow: radial-gradient(60% 50% at 50% 0%, rgba(47, 91, 234, 0.12), transparent 70%);
+  --dots: rgba(12, 12, 10, 0.07);
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: #09090a;
+  --surface: #131315;
+  --surface-2: #1b1b1e;
+  --surface-3: #242428;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --text: #f6f6f4;
+  --text-2: #d0d0cb;
+  --muted: #8f8e88;
+  --accent: #6b8cff;
+  --accent-ink: #97adff;
+  --accent-soft: rgba(107, 140, 255, 0.14);
+  --ring: rgba(107, 140, 255, 0.45);
+
+  --sup: #21a68a;
+  --con: #e8615f;
+  --nei: #8f7ff0;
+  --sup-ink: #5fd6bb;
+  --con-ink: #ff9592;
+  --nei-ink: #b7acff;
+  --sup-soft: rgba(33, 166, 138, 0.16);
+  --con-soft: rgba(232, 97, 95, 0.15);
+  --nei-soft: rgba(143, 127, 240, 0.17);
+
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --grid: #2a2a2d;
+  --axis: #3a3a3e;
+  --seq-0: #1b2230;
+  --seq-1: #6da7ec;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.4), 0 24px 48px -24px rgba(0, 0, 0, 0.8);
+  --glow: radial-gradient(60% 50% at 50% 0%, rgba(107, 140, 255, 0.16), transparent 70%);
+  --dots: rgba(255, 255, 255, 0.06);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-sup: var(--sup);
+  --color-con: var(--con);
+  --color-nei: var(--nei);
+  --color-sup-ink: var(--sup-ink);
+  --color-con-ink: var(--con-ink);
+  --color-nei-ink: var(--nei-ink);
+  --color-sup-soft: var(--sup-soft);
+  --color-con-soft: var(--con-soft);
+  --color-nei-soft: var(--nei-soft);
+
+  --shadow-card: var(--shadow);
+  --shadow-soft: var(--shadow-sm);
+  --shadow-float: var(--shadow-lg);
+
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-blink: blink 1s steps(2, start) infinite;
+  --animate-pulse-ring: pulse-ring 1.6s ease-out infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+@keyframes blink {
+  to { visibility: hidden; }
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--ring); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+
+@layer base {
+  html {
+    font-feature-settings: "cv11", "ss01", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  button, [role="button"] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    box-shadow: var(--shadow);
+  }
+  .bg-dots {
+    background-image: radial-gradient(var(--dots) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .bg-glow {
+    background-image: var(--glow);
+  }
+  .shimmer {
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+  }
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 0.35rem;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

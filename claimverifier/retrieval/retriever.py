@@ -28,6 +28,7 @@ class RetrievedDoc:
     score: float          # final ranking score (RRF score when hybrid, cosine otherwise)
     dense_score: float    # cosine similarity between claim and abstract embeddings
     bm25_score: float = 0.0
+    retrieval_rank: int = 0  # rank before neural re-ranking (0 = not re-ranked)
 
 
 def corpus_fingerprint(corpus: Sequence[Document]) -> str:

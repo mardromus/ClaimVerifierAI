@@ -59,9 +59,9 @@ def calibrate(verifier, claims: List[Claim], thresholds: Sequence[float] = DEFAU
     retrieved, scores = [], []
     for start in tqdm(range(0, len(texts), batch_size), desc="retrieval + rationales", unit="batch"):
         batch = texts[start:start + batch_size]
-        r = verifier.retriever.search_batch(batch, top_k or verifier.cfg.retrieval.top_k)
+        r, s, _ = verifier.retrieve_and_score(batch, top_k)
         retrieved.extend(r)
-        scores.extend(verifier.score_rationales(batch, r))
+        scores.extend(s)
 
     original_nli = verifier.nli
     verifier.nli = CachingNLI(original_nli)

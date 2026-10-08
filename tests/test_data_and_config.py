@@ -84,3 +84,21 @@ def test_text_utils():
         "First sentence.", "Second one (n = 3).", "Third!"]
     cues = cue_counts("Statins did not reduce stroke but increased survival")
     assert cues["neg"] == 1 and cues["dec"] == 1 and cues["inc"] == 1
+
+
+def test_direction_augmentation():
+    from claimverifier.training.examples import NLIExample, augment_nli_examples
+
+    ex = [
+        NLIExample("Aspirin reduced cancer risk.", "Aspirin reduces cancer risk.", SUPPORTED),
+        NLIExample("Statins lowered LDL.", "Statins do not reduce LDL.", CONTRADICTED),
+        NLIExample("Unrelated text.", "Coffee increases alertness.", INSUFFICIENT),
+    ]
+    out = augment_nli_examples(ex, seed=0)
+    flipped = [e for e in out if e.label == CONTRADICTED and e.premise.startswith("Aspirin")]
+    assert flipped and flipped[0].hypothesis == "Aspirin increases cancer risk."
+    para = [e for e in out if e.label == SUPPORTED]
+    assert para and para[0].hypothesis.split()[1] in {"decreases", "lowers", "diminishes", "lessens"}
+    # negated claims are never direction-flipped, NEI examples are left alone
+    assert all(not (e.premise.startswith("Statins") and e.label == SUPPORTED) for e in out)
+    assert all(not e.premise.startswith("Unrelated") for e in out)

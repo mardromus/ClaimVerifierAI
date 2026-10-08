@@ -41,6 +41,11 @@ class RetrievalConfig:
     rrf_k: int = 60
     candidate_pool: int = 100
     batch_size: int = 64
+    # Neural re-ranking: retrieve `rerank_depth` abstracts, score their sentences with the rationale selector
+    # (SciBERT) and keep the `top_k` with the strongest evidence. 0 disables re-ranking.
+    rerank_depth: int = 0
+    # Weight of the original retrieval rank in the re-ranking score (tie-breaker; 0 = rationale score only).
+    rerank_weight: float = 0.1
 
 
 @dataclass
@@ -110,6 +115,17 @@ class ExplanationConfig:
 
 
 @dataclass
+class SourcesConfig:
+    # Live literature sources the API / UI may query in addition to the indexed corpus.
+    enabled: List[str] = field(default_factory=lambda: ["europepmc", "pubmed"])
+    # Abstracts fetched per claim before re-ranking with the rationale selector.
+    fetch_size: int = 20
+    timeout: float = 15.0
+    # Contact e-mail sent to NCBI E-utilities (recommended by NCBI; NCBI_API_KEY env var raises rate limits).
+    email: Optional[str] = None
+
+
+@dataclass
 class Config:
     name: str = "default"
     artifacts_dir: str = "artifacts/default"
@@ -122,6 +138,7 @@ class Config:
     nli: NLIConfig = field(default_factory=NLIConfig)
     aggregation: AggregationConfig = field(default_factory=AggregationConfig)
     explanation: ExplanationConfig = field(default_factory=ExplanationConfig)
+    sources: SourcesConfig = field(default_factory=SourcesConfig)
 
     # ------------------------------------------------------------------ helpers
     @property

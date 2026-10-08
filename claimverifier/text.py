@@ -52,12 +52,45 @@ def numbers(text: str) -> Set[str]:
     return set(_NUMBER_RE.findall(text))
 
 
+_ABBREVIATIONS = {
+    "e.g.", "i.e.", "al.", "vs.", "fig.", "figs.", "approx.", "ca.", "dr.", "no.", "nos.", "ref.", "refs.",
+    "cf.", "resp.", "eq.", "eqs.", "vol.", "pp.", "st.", "mr.", "mrs.", "ms.", "prof.", "inc.", "ltd.", "co.",
+    "jan.", "feb.", "mar.", "apr.", "jun.", "jul.", "aug.", "sep.", "sept.", "oct.", "nov.", "dec.", "sp.", "spp.",
+}
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HEADING_RE = re.compile(r"<h\d[^>]*>(.*?)</h\d>", flags=re.I | re.S)
+
+
 def split_sentences(text: str) -> List[str]:
-    """Simple rule-based sentence splitter (SciFact abstracts are already split)."""
+    """Rule-based sentence splitter for scientific abstracts (SciFact abstracts are already split).
+
+    Splits after ``.``, ``!`` or ``?`` followed by whitespace and an upper-case letter, digit or bracket,
+    but not after common abbreviations (``e.g.``, ``et al.``, ``Fig.``, ``vs.`` ...). Single capital letters
+    are not treated as initials because biomedical sentences often end in one ("vitamin D.", "hepatitis B.").
+    """
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         return []
-    return [s.strip() for s in _SENT_SPLIT_RE.split(text) if s.strip()]
+    pieces = [p.strip() for p in _SENT_SPLIT_RE.split(text) if p.strip()]
+    sentences: List[str] = []
+    for piece in pieces:
+        if sentences:
+            last_word = sentences[-1].rsplit(" ", 1)[-1].lower()
+            if last_word in _ABBREVIATIONS:
+                sentences[-1] = f"{sentences[-1]} {piece}"
+                continue
+        sentences.append(piece)
+    return sentences
+
+
+def clean_abstract_html(text: str) -> str:
+    """Strip HTML/JATS markup from an abstract; section headings become ``Heading:`` prefixes."""
+    import html as _html
+
+    text = _HEADING_RE.sub(lambda m: f" {m.group(1).strip().rstrip(':')}: ", text or "")
+    text = re.sub(r"</?(p|div|sec|br)[^>]*>", " ", text, flags=re.I)
+    text = _HTML_TAG_RE.sub("", text)
+    return re.sub(r"\s+", " ", _html.unescape(text)).strip()
 
 
 def cue_counts(text: str) -> dict:

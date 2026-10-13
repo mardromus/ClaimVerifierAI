@@ -1,0 +1,152 @@
+{
+  "num_claims": 300,
+  "label_distribution": {
+    "SUPPORTED": 124,
+    "CONTRADICTED": 64,
+    "INSUFFICIENT_EVIDENCE": 112
+  },
+  "verdict_classification": {
+    "accuracy": 0.6533333333333333,
+    "macro_precision": 0.6987628384687209,
+    "macro_recall": 0.6547619047619048,
+    "macro_f1": 0.647420634920635,
+    "weighted_precision": 0.7190849673202615,
+    "weighted_recall": 0.6533333333333333,
+    "weighted_f1": 0.6509444444444445,
+    "per_class": {
+      "SUPPORTED": {
+        "precision": 0.9117647058823529,
+        "recall": 0.5,
+        "f1": 0.6458333333333334,
+        "support": 124
+      },
+      "CONTRADICTED": {
+        "precision": 0.625,
+        "recall": 0.625,
+        "f1": 0.625,
+        "support": 64
+      },
+      "INSUFFICIENT_EVIDENCE": {
+        "precision": 0.5595238095238095,
+        "recall": 0.8392857142857143,
+        "f1": 0.6714285714285715,
+        "support": 112
+      }
+    },
+    "confusion_matrix": {
+      "labels": [
+        "SUPPORTED",
+        "CONTRADICTED",
+        "INSUFFICIENT_EVIDENCE"
+      ],
+      "matrix": [
+        [
+          62,
+          10,
+          52
+        ],
+        [
+          2,
+          40,
+          22
+        ],
+        [
+          4,
+          14,
+          94
+        ]
+      ]
+    },
+    "num_examples": 300
+  },
+  "evidence_retrieval": {
+    "num_queries": 188,
+    "recall@1": 0.6681737588652482,
+    "precision@1": 0.6861702127659575,
+    "hit@1": 0.6861702127659575,
+    "recall@3": 0.8601063829787235,
+    "precision@3": 0.29964539007092195,
+    "hit@3": 0.8882978723404256,
+    "recall@5": 0.8937943262411348,
+    "precision@5": 0.18936170212765954,
+    "hit@5": 0.9148936170212766,
+    "recall@10": 0.9429078014184397,
+    "precision@10": 0.10265957446808512,
+    "hit@10": 0.9574468085106383,
+    "recall@20": 0.9579787234042553,
+    "precision@20": 0.0526595744680851,
+    "hit@20": 0.9680851063829787,
+    "mrr": 0.789756859835643,
+    "depth": 100
+  },
+  "evidence_retrieval_cited_docs": {
+    "num_queries": 300,
+    "recall@1": 0.5121666666666665,
+    "precision@1": 0.5333333333333333,
+    "hit@1": 0.5333333333333333,
+    "recall@3": 0.6869999999999999,
+    "precision@3": 0.2477777777777777,
+    "hit@3": 0.7133333333333334,
+    "recall@5": 0.7370000000000001,
+    "precision@5": 0.16199999999999998,
+    "hit@5": 0.7566666666666667,
+    "recall@10": 0.7941111111111112,
+    "precision@10": 0.08966666666666666,
+    "hit@10": 0.81,
+    "recall@20": 0.8585555555555555,
+    "precision@20": 0.04849999999999999,
+    "hit@20": 0.87,
+    "mrr": 0.6390772676066806,
+    "depth": 100
+  },
+  "scifact_abstract_level": {
+    "label_only": {
+      "precision": 0.5827814569536424,
+      "recall": 0.42105263157894735,
+      "f1": 0.48888888888888893
+    },
+    "rationalized": {
+      "precision": 0.5695364238410596,
+      "recall": 0.41148325358851673,
+      "f1": 0.4777777777777778
+    },
+    "predicted_abstracts": 151,
+    "gold_abstracts": 209
+  },
+  "scifact_sentence_selection": {
+    "precision": 0.5209790209790209,
+    "recall": 0.40710382513661203,
+    "f1": 0.45705521472392635
+  },
+  "seconds_total": 3106.3,
+  "ms_per_claim": 10354.2,
+  "components": {
+    "retrieval": {
+      "embedder": "sbert",
+      "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+      "dim": 384,
+      "index": "flat",
+      "hybrid_bm25": true,
+      "rrf_weights": {
+        "dense": 1.0,
+        "bm25": 1.0
+      }
+    },
+    "rationale": {
+      "method": "scibert",
+      "model": "models/scibert-rationale"
+    },
+    "nli": {
+      "method": "transformer",
+      "model": "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+    },
+    "decision": {
+      "threshold": 0.5,
+      "nei_weight": 1.0,
+      "calibrated": false
+    },
+    "explanation": {
+      "backend": "none"
+    }
+  }
+}

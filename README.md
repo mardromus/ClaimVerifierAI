@@ -73,8 +73,10 @@ flowchart LR
    The three scores sum to one. Strong evidence in both directions is flagged as *mixed*. `τ` and `w` can be calibrated
    on the train split.
 5. **Explanation (RAG).** An instruction-tuned LLM explains the verdict using only the numbered evidence, citing it as
-   `[n]`. Citations to sources that don't exist are removed. The verdict always comes from the NLI pipeline, never from
-   the LLM. Without an LLM, a deterministic extractive explanation with citations is used instead.
+   `[n]`. Citations to sources that don't exist are removed, and an answer in which fewer than half of the sentences
+   cite a source is treated as ungrounded and replaced by the extractive explanation (`explanation.min_cited_fraction`).
+   The verdict always comes from the NLI pipeline, never from the LLM. Without an LLM, a deterministic extractive
+   explanation with citations is used instead.
 
 ## Quick start
 
@@ -142,9 +144,10 @@ Models never train on it, and decision settings are never tuned on it. As in the
 of a fine-tuned SciBERT model is chosen on dev claim–evidence pairs. Full reports (per-class scores, confusion
 matrices, predictions) are in [`reports/`](reports) and on the **Evaluation** page.
 
-These runs come from a CPU-only environment where the Hugging Face Hub was not reachable. SciBERT and the SciFact
-authors' RoBERTa verifier were available from AI2's S3 bucket, but Sentence-BERT, DeBERTa-v3 and Qwen/Llama were not.
-So the `default` and `large` configurations are not benchmarked here; run `make evaluate` to add them.
+All runs are CPU-only. The `default` pipeline (Sentence-BERT + SciBERT + zero-shot DeBERTa-v3, not calibrated) was
+benchmarked on 2 CPU cores with a SciBERT selector retrained from scratch. `large` needs a 16 GB GPU and is not
+benchmarked here. As a reproducibility check, `verisci` re-run with that retrained selector scored 69.3 accuracy and
+67.1 macro-F1 against the stored 69.7 / 67.7, so retraining moves the numbers by less than a point.
 
 ### Claim verification
 
@@ -154,10 +157,14 @@ So the `default` and `large` configurations are not benchmarked here; run `make 
 | `lite` (offline, calibrated on train) | logistic regression | lexical stance model | 52.3 | 47.2 | 46.5 | 45.7 | 21.1 | 24.8 / 21.6 |
 | `scibert` + lexical stance | **SciBERT** | lexical stance model | 63.3 | 60.6 | 57.7 | 57.9 | 34.6 | 38.9 / 35.5 |
 | `scibert` | **SciBERT** | SciBERT verifier | 66.3 | 63.8 | 64.1 | 63.7 | 47.8 | 40.1 / 36.6 |
-| **`verisci`** | **SciBERT** | **RoBERTa-large (FEVER + SciFact)** | **69.7** | **69.3** | **67.0** | **67.7** | **58.4** | **52.5 / 48.9** |
+| `default` (zero-shot, not calibrated) | **SciBERT** | DeBERTa-v3 (MNLI + FEVER + ANLI) | 65.3 | **69.9** | 65.5 | 64.7 | **62.5** | 48.9 / 47.8 |
+| **`verisci`** | **SciBERT** | **RoBERTa-large (FEVER + SciFact)** | **69.7** | 69.3 | **67.0** | **67.7** | 58.4 | **52.5 / 48.9** |
 
 The `verisci` verifier was trained by the SciFact authors on FEVER and SciFact train (`claimverifier fetch-verifier`
-downloads it). In this pipeline it works behind our SciBERT evidence selector and BM25 retrieval.
+downloads it). In this pipeline it works behind our SciBERT evidence selector and BM25 retrieval. The zero-shot
+DeBERTa-v3 verifier in `default` has the best Contradicted F1 and macro precision, but it is cautious: 52 of the 124
+supported claims fall back to Insufficient Evidence. Tuning its threshold on the train split (`calibrate`) targets
+exactly that.
 
 ### Robustness: plain-language stance probes
 
@@ -171,6 +178,7 @@ pairs (12 supported, 12 contradicted) that differ only in effect direction, nega
 | SciBERT verifier, fine-tuned on SciFact (`scibert`) | 14 / 24 (58%) | 63.7 |
 | SciBERT verifier + direction augmentation (`train-nli --augment`) | 10 / 24 (42%) | 65.8 |
 | **RoBERTa-large, FEVER + SciFact (`verisci`)** | **24 / 24 (100%)** | **67.7** |
+| DeBERTa-v3, MNLI + FEVER + ANLI, zero-shot (`default`) | **24 / 24 (100%)** | 64.7 |
 
 SciBERT fine-tuned on about 3k SciFact pairs scores reasonably on dev, but it gets everyday phrasings wrong; for
 example, it rates "reduced the risk" as contradicting "reduces the risk". Augmenting its training data with flipped and
@@ -185,22 +193,27 @@ verifier pretrained on large fact-checking data fixes both. That is why `default
 | LSA dense embeddings + FAISS | 40.4 | 54.0 | 66.9 | 76.5 | 84.6 | 0.532 |
 | LSA + BM25, reciprocal-rank fusion | 55.4 | 68.8 | 78.7 | 85.3 | 91.0 | 0.661 |
 | **BM25** (used by `lite` / `scibert` / `verisci`) | 69.0 | 80.1 | 86.6 | 91.6 | 93.8 | 0.776 |
-| BM25 top 10 → **SciBERT re-ranking** (top 5 kept) | **72.7** | **84.4** | **88.0** | – | – | 0.804 @5 |
+| Sentence-BERT (all-MiniLM-L6-v2) + FAISS | 61.3 | 80.7 | 86.9 | 91.2 | 95.2 | 0.735 |
+| **Sentence-BERT + BM25**, reciprocal-rank fusion (`default`) | 66.8 | **86.0** | **89.4** | **94.3** | **95.8** | 0.790 |
+| BM25 top 10 → **SciBERT re-ranking** (top 5 kept) | **72.7** | 84.4 | 88.0 | – | – | 0.804 @5 |
 
 LSA vectors are too coarse to help BM25 on SciFact, so their fusion weight was set to 0 using the train split.
-`default.yaml` fuses BM25 with much stronger Sentence-BERT embeddings. Re-ranking by SciBERT evidence scores
+`default.yaml` fuses BM25 with much stronger Sentence-BERT embeddings, the best first-stage retriever measured here:
+BM25 is more precise at rank 1, Sentence-BERT recalls more by rank 20, and their fusion beats both at Recall@3–20. Re-ranking by SciBERT evidence scores
 (`--set retrieval.rerank_depth=10`) finds more gold papers, but the verdict does not improve: macro-F1 is 67.5 with
 `verisci`. It is therefore off by default for the corpus and always on for live Europe PMC / PubMed results, whose own
 ranking is keyword-based.
 
 ### Components
 
-* **SciBERT rationale selector:** sentence-level F1 0.691 (P 0.698, R 0.683) on dev evidence and cited abstracts. It was
-  trained for 2 epochs (about 1 h on a 3-thread CPU) with negatives down-sampled to 4:1.
+* **SciBERT rationale selector:** sentence-level F1 0.691 (P 0.698, R 0.683) on dev evidence and cited abstracts, from
+  the best of 3 epochs (epoch 2) with negatives down-sampled to 4:1 (`make train-rationale`). Retraining from scratch
+  reproduced it (F1 0.692, P 0.700, R 0.683) in 76 min on 2 CPU cores.
 * **SciBERT verifier** (3-way, dev claim–evidence pairs including retrieved hard negatives): accuracy 81.1%, macro-F1
   0.706. With augmentation: 83.0%, 0.725.
 * **Latency on 4 CPU threads:** `verisci` takes about 6–7 s per claim for 5 abstracts, mostly SciBERT sentence scoring
-  and RoBERTa-large inference (a GPU is recommended for interactive use). `lite` takes about 50 ms.
+  and RoBERTa-large inference (a GPU is recommended for interactive use). `default` is slower on CPU, about 10 s per
+  claim on 2 cores, because DeBERTa-v3 attention is expensive without a GPU. `lite` takes about 50 ms.
 
 ## REST API
 

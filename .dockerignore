@@ -1,0 +1,20 @@
+# Keep the build context small: datasets, indexes and weights are mounted as volumes
+# (see docker-compose.yml) and the web UI is rebuilt in its own stage.
+.git
+.github
+**/__pycache__
+**/*.py[cod]
+*.egg-info
+.pytest_cache
+.venv
+venv
+/data
+/artifacts
+/models
+web/node_modules
+web/dist
+.cache
+*.faiss
+*.joblib
+*.safetensors
+*.bin

@@ -51,6 +51,15 @@ def test_postprocess_removes_invalid_citations_and_adds_sources():
     assert "Sources: [1], [3]" in exp.text and exp.citations == [1, 3]
 
 
+def test_postprocess_strips_markdown_but_keeps_text():
+    raw = "## Summary\nThe evidence **strongly** supports it [1].\n\n1. **Population**: adults [3].\n- *Design*: p*q, 3*4."
+    exp = postprocess(raw, EVIDENCE)
+    assert "**" not in exp.text and "##" not in exp.text and "\n1." not in exp.text and "\n-" not in exp.text
+    assert "The evidence strongly supports it [1]." in exp.text and "Population: adults [3]." in exp.text
+    assert "p*q, 3*4." in exp.text and exp.citations == [1, 3]
+    assert "no Markdown" in build_messages("c", "SUPPORTED", 0.9, EVIDENCE)[1]["content"]
+
+
 class FakeLLM(LLMBackend):
     name = "fake"
 
@@ -199,3 +208,17 @@ def streaming_server():
 def test_ollama_and_openai_token_streams(streaming_server):
     assert list(OllamaLLM("m", streaming_server).stream_chat([], 10, 0)) == ["Hel", "lo [1]"]
     assert list(OpenAICompatibleLLM("m", f"{streaming_server}/v1").stream_chat([], 10, 0)) == ["Hi", " [1]"]
+
+
+def test_ungrounded_llm_answer_falls_back_to_template():
+    uncited = "The evidence suggests the claim is true. Studies were large and well designed. Results were robust."
+    gen = ExplanationGenerator(ExplanationConfig(backend="ollama"), backend=FakeLLM(uncited))
+    events = list(gen.stream("claim", SUPPORTED, 0.9, EVIDENCE))
+    final = events[-1][1]
+    assert ("reset", None) in events and final.backend.startswith("template") and "cited" in final.error
+    grounded = "The cohort found lower risk [1]. The trial saw no reduction [3]. Overall the claim holds."
+    exp = ExplanationGenerator(ExplanationConfig(backend="ollama"), backend=FakeLLM(grounded)).generate(
+        "claim", SUPPORTED, 0.9, EVIDENCE)
+    assert exp.backend.startswith("fake") and exp.citations == [1, 3]
+    off = ExplanationGenerator(ExplanationConfig(backend="ollama", min_cited_fraction=0), backend=FakeLLM(uncited))
+    assert off.generate("claim", SUPPORTED, 0.9, EVIDENCE).backend.startswith("fake")

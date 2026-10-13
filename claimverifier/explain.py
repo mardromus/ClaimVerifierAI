@@ -71,18 +71,40 @@ def build_messages(claim: str, verdict: str, confidence: float, evidence: List[E
         "Task: In 3-5 sentences, explain why this evidence supports, contradicts, or is insufficient to verify "
         "the claim. Reference sources inline as [n]. Point out important caveats (study population, design, "
         "effect size, weak or conflicting evidence) only if they appear in the evidence. Do not add information "
-        "that is not in the evidence. Do not change the verdict; if the evidence looks weak, say so.",
+        "that is not in the evidence. Do not change the verdict; if the evidence looks weak, say so. "
+        "Write plain prose: no Markdown, headings, bold text or lists.",
     ]
     return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": "\n".join(lines)}]
 
 
 _CITE_RE = re.compile(r"\[(\d+)\]")
+_MD_STRONG_RE = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
+_MD_EM_RE = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])")
+_MD_LINE_RE = re.compile(r"^[ \t]{0,3}(?:#{1,6}[ \t]+|[-*+\u2022][ \t]+|\d{1,2}[.)][ \t]+)", re.MULTILINE)
+
+
+def strip_markdown(text: str) -> str:
+    """Remove the Markdown formatting small chat models add despite instructions (the UI shows plain text)."""
+    text = _MD_STRONG_RE.sub(r"\2", text)
+    text = _MD_EM_RE.sub(r"\1", text)
+    return _MD_LINE_RE.sub("", text)
+
+
+def cited_fraction(text: str, valid: set) -> float:
+    """Share of the sentences (ignoring fragments of three words or fewer) that cite a valid source [n]."""
+    from .text import split_sentences
+
+    sentences = [s for s in split_sentences(strip_markdown(text)) if len(s.split()) > 3]
+    if not sentences:
+        return 0.0
+    cited = sum(any(int(n) in valid for n in _CITE_RE.findall(s)) for s in sentences)
+    return cited / len(sentences)
 
 
 def postprocess(text: str, evidence: List[EvidenceForPrompt]) -> Explanation:
-    """Drop citations to non-existent sources and make sure the explanation cites something."""
+    """Strip Markdown, drop citations to non-existent sources and make sure the explanation cites something."""
     valid = {ev.citation for ev in evidence}
-    text = text.strip()
+    text = strip_markdown(text.strip())
     text = _CITE_RE.sub(lambda m: m.group(0) if int(m.group(1)) in valid else "", text)
     cited = sorted({int(n) for n in _CITE_RE.findall(text)})
     if not cited and evidence:
@@ -382,7 +404,19 @@ class ExplanationGenerator:
             yield "reset", None
             yield from _stream_template(fallback)
             return
-        result = postprocess("".join(parts), evidence)
+        raw = "".join(parts)
+        coverage = cited_fraction(raw, {ev.citation for ev in evidence})
+        if evidence and self.cfg.fallback_to_template and coverage < self.cfg.min_cited_fraction:
+            # Every statement is meant to be traceable to the evidence; an answer that mostly cites nothing
+            # cannot be checked, so the extractive explanation (faithful by construction) is shown instead.
+            logger.warning("LLM explanation cites evidence in only %.0f%% of its sentences; using template", 100 * coverage)
+            fallback = template_explanation(claim, verdict, confidence, evidence, mixed)
+            fallback.backend = "template (LLM answer not grounded)"
+            fallback.error = f"only {coverage:.0%} of its sentences cited the retrieved evidence"
+            yield "reset", None
+            yield from _stream_template(fallback)
+            return
+        result = postprocess(raw, evidence)
         result.backend = backend.label
         yield "final", result
 

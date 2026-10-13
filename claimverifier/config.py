@@ -114,6 +114,9 @@ class ExplanationConfig:
     max_evidence: int = 6
     timeout: float = 120.0
     fallback_to_template: bool = True
+    # Grounding check: share of the LLM's sentences that must cite a retrieved source as [n]. Below it, the
+    # answer is treated as ungrounded and replaced by the template explanation (0 disables the check).
+    min_cited_fraction: float = 0.5
 
 
 @dataclass

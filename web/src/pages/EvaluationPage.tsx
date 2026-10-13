@@ -33,7 +33,8 @@ export default function EvaluationPage() {
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  const charted = useMemo(() => (reports ?? []).slice(0, 4), [reports]);
+  // Reports are sorted by ascending macro-F1; chart the strongest ones (one colour each), never drop the best.
+  const charted = useMemo(() => (reports ?? []).slice(-SERIES.length), [reports]);
   const colorOf = (name: string) => SERIES[charted.findIndex((r) => r.name === name)] ?? "var(--muted)";
   const sel = selected ? metrics[selected] : undefined;
   const selSummary = reports?.find((r) => r.name === selected);

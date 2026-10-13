@@ -1,0 +1,17 @@
+digraph G {
+  graph [rankdir=TB, fontname="Inter", nodesep=0.3, ranksep=0.35, pad=0.2, bgcolor="white"];
+  node  [shape=box, style="rounded,filled", fontname="Inter", fontsize=11.5, color="#52514e", penwidth=1.1, fillcolor="#ffffff", margin="0.14,0.07"];
+  edge  [color="#52514e", arrowsize=0.65, penwidth=1.1, fontname="Inter", fontsize=10, fontcolor="#52514e"];
+
+  ev  [label="Per-abstract evidence\nrelevance r  ·  stance p", fillcolor="#f0efec"];
+  gate [label="Relevance gate\ng = min(1, r/τ)\nweak evidence counts less", fillcolor="#cde2fb"];
+  det [label="Two evidence 'detectors'\nS (support), C (contradict)\nmixed flag if S, C ≥ 0.5", fillcolor="#cde2fb"];
+  ver [label="Verdict\n+ three-way confidence", fillcolor="#86b6ef"];
+  llm [label="LLM explainer (RAG)\nsees only numbered evidence;\ncannot change the verdict", fillcolor="#cde2fb"];
+  chk [label="Citation + grounding check\ninvalid [n] removed; if under half of\nthe sentences cite a source → template", fillcolor="#cde2fb"];
+  ui  [label="Traceable answer\nverdict → cited sentence → paper", fillcolor="#f0efec"];
+  ev -> gate -> det -> ver -> llm -> chk -> ui;
+  {rank=same; ev; gate; det}
+  {rank=same; ver; llm; chk}
+  ver -> ui [style=dashed, label=" verdict locked"];
+}

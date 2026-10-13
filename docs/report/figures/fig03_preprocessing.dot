@@ -1,0 +1,27 @@
+digraph G {
+  graph [rankdir=TB, fontname="Inter", nodesep=0.3, ranksep=0.28, pad=0.2, bgcolor="white", newrank=true];
+  node  [shape=box, style="rounded,filled", fontname="Inter", fontsize=11.5, color="#52514e", penwidth=1.1, fillcolor="#ffffff", margin="0.14,0.07"];
+  edge  [color="#52514e", arrowsize=0.65, penwidth=1.1, fontname="Inter", fontsize=10, fontcolor="#52514e"];
+
+  subgraph cluster_in { label="Raw inputs"; labeljust=l; fontsize=12; color="#c3c2b7"; style="rounded,dashed";
+    a2 [label="Europe PMC JSON /\nPubMed XML abstracts"];
+    a3 [label="Pasted abstract\nor news article"];
+    a1 [label="SciFact JSONL\n(pre-split sentences)"];
+  }
+  c1 [label="Claim extraction (optional)\ncue-word scoring of\ncheck-worthy sentences", fillcolor="#f0efec"];
+  s1 [label="① Markup cleaning — strip HTML/JATS tags, unescape entities,\nsection headings become prefixes such as \"Results:\"", fillcolor="#cde2fb"];
+  s2 [label="② Normalisation — collapse whitespace, drop empty sentences, check unique document IDs", fillcolor="#cde2fb"];
+  s3 [label="③ Sentence splitting — rule-based and abbreviation-aware (e.g., et al., Fig., vs.)", fillcolor="#cde2fb"];
+  s4 [label="④ Lexical tokenisation\nlower-case regex tokens, numbers kept", fillcolor="#cde2fb"];
+  s5 [label="⑤ Stop-word removal\nEnglish list minus negation and\nincrease/decrease cue words", fillcolor="#cde2fb"];
+  s6 [label="⑥ Sub-word tokenisation\nWordPiece (SciBERT) · BPE (RoBERTa) ·\nSentencePiece (DeBERTa-v3); truncation", fillcolor="#86b6ef"];
+  o1 [label="BM25 · TF-IDF/LSA · lite features", shape=plaintext, style="", fontsize=10.5];
+  o2 [label="transformer encoders", shape=plaintext, style="", fontsize=10.5];
+
+  a2 -> s1; a3 -> s1; a1 -> s2; s1 -> s2 -> s3;
+  a3 -> c1 [style=dashed]; c1 -> s3 [style=dashed, label=" claims"];
+  s3 -> s4 -> s5 -> o1;
+  s3 -> s6 -> o2;
+  {rank=same; s4; s6}
+  {rank=same; c1; s1}
+}

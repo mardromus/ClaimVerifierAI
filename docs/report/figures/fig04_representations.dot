@@ -1,0 +1,25 @@
+digraph G {
+  graph [rankdir=TB, fontname="Inter", nodesep=0.3, ranksep=0.3, pad=0.2, bgcolor="white", compound=true];
+  node  [shape=box, style="rounded,filled", fontname="Inter", fontsize=11.5, color="#52514e", penwidth=1.1, fillcolor="#ffffff", margin="0.14,0.07"];
+  edge  [color="#52514e", arrowsize=0.65, penwidth=1.1, fontname="Inter", fontsize=10, fontcolor="#52514e"];
+
+  subgraph cluster_a { label="(a) Sparse lexical — BM25 / TF-IDF"; labeljust=l; fontsize=12; color="#c3c2b7"; style="rounded";
+    q1 [label="claim terms"]; d1 [label="abstract terms"];
+    s1 [label="term-frequency × IDF match\n(exact words, rare terms weigh more)", fillcolor="#cde2fb"];
+    q1 -> s1; d1 -> s1;
+  }
+  subgraph cluster_b { label="(b) Dense bi-encoder — Sentence-BERT / LSA"; labeljust=l; fontsize=12; color="#c3c2b7"; style="rounded";
+    q2 [label="claim"]; d2 [label="abstract"];
+    e1 [label="encoder", fillcolor="#cde2fb"]; e2 [label="encoder\n(shared weights)", fillcolor="#cde2fb"];
+    v1 [label="384-d vector", shape=box, style="filled", fillcolor="#f0efec"];
+    v2 [label="384-d vector\n(pre-indexed in FAISS)", style="filled", fillcolor="#f0efec"];
+    cs [label="cosine / inner product", fillcolor="#86b6ef"];
+    q2 -> e1 -> v1 -> cs; d2 -> e2 -> v2 -> cs;
+  }
+  subgraph cluster_c { label="(c) Cross-encoder — SciBERT / RoBERTa / DeBERTa"; labeljust=l; fontsize=12; color="#c3c2b7"; style="rounded";
+    pair [label="[CLS] claim [SEP] evidence sentence(s) [SEP]", fillcolor="#f0efec"];
+    tf [label="Transformer layers: full attention\nbetween every claim and evidence token", fillcolor="#cde2fb"];
+    head [label="[CLS] vector → linear layer → softmax\n(rationale probability or 3-way stance)", fillcolor="#86b6ef"];
+    pair -> tf -> head;
+  }
+}

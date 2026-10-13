@@ -1,0 +1,34 @@
+digraph G {
+  graph [rankdir=TB, fontname="Inter", fontsize=13, nodesep=0.35, ranksep=0.32, pad=0.25, bgcolor="white", newrank=true];
+  node  [shape=box, style="rounded,filled", fontname="Inter", fontsize=12, color="#52514e", penwidth=1.1, fillcolor="#ffffff", margin="0.18,0.08"];
+  edge  [color="#52514e", arrowsize=0.7, penwidth=1.1, fontname="Inter", fontsize=10.5, fontcolor="#52514e"];
+
+  claim [label="Input claim\n(typed, batch list, or extracted from an article)", fillcolor="#f0efec"];
+  router [label="Evidence source selector", shape=diamond, style="filled", fillcolor="#ffffff", margin="0.05,0.05", fontsize=11];
+
+  subgraph cluster_src { label="1  Evidence sources"; labeljust=l; fontsize=12; color="#c3c2b7"; style="rounded,dashed";
+    corpus [label="SciFact corpus\n5,183 abstracts (offline index)"];
+    live   [label="Live literature search\nEurope PMC  ·  PubMed"];
+    user   [label="User-supplied text\n(pasted abstracts)"];
+  }
+  prep [label="2  Pre-processing\nmarkup cleaning · sentence splitting · tokenisation", fillcolor="#cde2fb"];
+  retr [label="3  Retrieval\nBM25  +  dense embeddings in FAISS  →  reciprocal-rank fusion\n(top-k abstracts)", fillcolor="#cde2fb"];
+  rat  [label="4  Evidence (rationale) selection\nSciBERT cross-encoder scores every claim–sentence pair\nkeep ≤ 3 sentences with p ≥ τ", fillcolor="#cde2fb"];
+  nli  [label="5  Stance prediction (NLI)\npremise = selected evidence, hypothesis = claim\nRoBERTa-large / DeBERTa-v3 / SciBERT verifier", fillcolor="#cde2fb"];
+  agg  [label="6  Relevance-gated aggregation\nSupported / Contradicted / Insufficient Evidence + confidence", fillcolor="#86b6ef"];
+  exp  [label="7  Explanation (RAG)\nQwen 2.5 / Llama 3 writes a cited summary of the evidence;\nunknown citations removed; template fallback", fillcolor="#cde2fb"];
+  out  [label="8  Delivery\nReact web UI  ·  streaming REST API  ·  CLI", fillcolor="#f0efec"];
+  ev   [label="Evaluation module\nAccuracy, P/R/F1, confusion matrix,\nRecall@K, MRR, SciFact abstract F1", shape=note, fillcolor="#ffffff"];
+
+  claim -> router;
+  router -> corpus; router -> live; router -> user;
+  corpus -> prep; live -> prep; user -> prep;
+  prep -> retr;
+  retr -> rat [label="  candidate abstracts"];
+  rat -> nli  [label="  evidence sentences"];
+  nli -> agg  [label="  per-abstract stance probabilities"];
+  agg -> exp  [label="  verdict (fixed)"];
+  exp -> out;
+  agg -> ev [style=dashed, label=" dev-split predictions"];
+  {rank=same; agg; ev}
+}

@@ -1,0 +1,22 @@
+digraph G {
+  graph [rankdir=TB, fontname="Inter", nodesep=0.5, ranksep=0.3, pad=0.2, bgcolor="white"];
+  node  [shape=box, style="rounded,filled", fontname="Inter", fontsize=11.5, color="#52514e", penwidth=1.1, fillcolor="#ffffff", margin="0.14,0.07"];
+  edge  [color="#52514e", arrowsize=0.65, penwidth=1.1, fontname="Inter", fontsize=10, fontcolor="#52514e"];
+
+  subgraph cluster_r { label="Rationale selector (fine-tuned here)"; labeljust=l; fontsize=12; color="#c3c2b7"; style="rounded";
+    r_in [label="claim  +  one abstract sentence", fillcolor="#f0efec"];
+    r_enc [label="SciBERT-base\n12 layers · 768-d · 110M params\nmax length 128", fillcolor="#cde2fb"];
+    r_out [label="P(rationale)\nsentence kept if ≥ τ (top 3)", fillcolor="#86b6ef"];
+    r_in -> r_enc -> r_out;
+  }
+  subgraph cluster_v { label="Stance verifier"; labeljust=l; fontsize=12; color="#c3c2b7"; style="rounded";
+    v_in [label="premise: title + selected sentences\nhypothesis: claim", fillcolor="#f0efec"];
+    v_enc [label="RoBERTa-large (FEVER → SciFact)\n24 layers · 1024-d · 355M params\nmax length 512", fillcolor="#cde2fb"];
+    v_out [label="P(Supported), P(Contradicted),\nP(Insufficient)", fillcolor="#86b6ef"];
+    v_in -> v_enc -> v_out;
+  }
+  agg [label="Aggregation over the top-k abstracts\nS = max g·p(sup),  C = max g·p(con)\ng = min(1, r / τ)", fillcolor="#ffffff"];
+  r_out -> v_in [label=" evidence"];
+  v_out -> agg;
+  r_out -> agg [label=" relevance r", style=dashed];
+}

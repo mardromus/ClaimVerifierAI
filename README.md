@@ -3,7 +3,7 @@
 **Check any scientific claim against the research literature.** ClaimVerifier retrieves relevant papers, highlights
 the sentences that act as evidence, and classifies the claim as **Supported**, **Contradicted** or **Insufficient
 Evidence** with confidence scores. It then writes a short explanation that cites its sources. Every verdict can be
-traced back to specific sentences in specific papers.
+traced back to specific sentences in specific papers or articles.
 
 ![ClaimVerifier AI: verdict, cited explanation and highlighted evidence](docs/screenshot.png)
 

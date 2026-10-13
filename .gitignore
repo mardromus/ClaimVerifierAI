@@ -12,10 +12,11 @@ dist/
 .venv/
 venv/
 
-# Data, indexes and trained weights (re-created by the CLI)
-data/
-artifacts/
-models/
+# Data, indexes and trained weights (re-created by the CLI). Anchored to the repo root so the
+# claimverifier/data/ package is not ignored.
+/data/
+/artifacts/
+/models/
 *.faiss
 *.joblib
 *.safetensors

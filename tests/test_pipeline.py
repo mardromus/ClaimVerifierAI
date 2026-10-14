@@ -68,3 +68,23 @@ def test_calibration_round_trip(lite_verifier, lite_cfg):
     cal = lite_verifier.apply_calibration()
     assert cal is not None and lite_verifier.cfg.rationale.threshold == result["best"]["threshold"]
     assert lite_verifier.components()["decision"]["calibrated"]
+
+
+def test_evidence_order_prefers_clearer_evidence():
+    """Two abstracts that both pass the rationale threshold count equally in the verdict, but the one with
+    the clearer evidence sentence is shown and cited first, even if the NLI model is slightly less sure."""
+    from claimverifier.labels import CONTRADICTED, INSUFFICIENT, SUPPORTED
+    from claimverifier.pipeline import DocumentResult, VerificationResult, ClaimVerifier, shown_documents
+
+    def doc(citation, relevance, contradict):
+        probs = {SUPPORTED: 0.01, CONTRADICTED: contradict, INSUFFICIENT: 0.99 - contradict}
+        return DocumentResult(doc_id=citation, title=f"Paper {citation}", url="", citation=citation, rank=citation,
+                              retrieval_score=0.0, dense_score=0.0, bm25_score=0.0, relevance=relevance,
+                              has_evidence=True, evidence_weight=min(1.0, relevance / 0.5), stance=CONTRADICTED,
+                              stance_probs=probs, evidence=[], sentences=[], sentence_scores=[])
+
+    off_topic, on_topic, weak = doc(1, 0.65, 0.98), doc(2, 0.97, 0.96), doc(3, 0.30, 0.99)
+    result = VerificationResult.__new__(VerificationResult)
+    result.documents = [off_topic, on_topic, weak]
+    assert [d.citation for d in shown_documents(result)] == [2, 1, 3]
+    assert [e.citation for e in ClaimVerifier.evidence_for_prompt(result)] == [2, 1, 3]

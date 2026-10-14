@@ -94,8 +94,14 @@ MIN_SHOWN_WEIGHT = 0.5
 
 
 def evidence_strength(d: "DocumentResult") -> float:
-    """How strongly an abstract pushes the verdict towards Supported or Contradicted."""
-    return d.evidence_weight * max(d.stance_probs[SUPPORTED], d.stance_probs[CONTRADICTED])
+    """Order in which abstracts are shown and cited: relevance x stance confidence.
+
+    The verdict gates relevance (``evidence_weight`` saturates at 1 once the best sentence passes the rationale
+    threshold), but for ordering the ungated relevance is used, so that among abstracts that all pass the threshold
+    the one with the clearer evidence sentence is cited first. Below the threshold this is proportional to
+    ``evidence_weight * max(s, c)``.
+    """
+    return d.relevance * max(d.stance_probs[SUPPORTED], d.stance_probs[CONTRADICTED])
 
 
 def shown_documents(result: "VerificationResult") -> List["DocumentResult"]:

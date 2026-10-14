@@ -9,7 +9,8 @@ type Filter = "all" | Verdict | "none";
 
 export function EvidenceSection({ documents }: { documents: DocumentResult[] }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const strength = (d: DocumentResult) => d.evidence_weight * Math.max(d.stance_probs.SUPPORTED, d.stance_probs.CONTRADICTED);
+  // Same order as the explanation (pipeline.evidence_strength): relevance x stance confidence.
+  const strength = (d: DocumentResult) => d.relevance * Math.max(d.stance_probs.SUPPORTED, d.stance_probs.CONTRADICTED);
   const ordered = useMemo(() => {
     const shown = documents.filter(isShown).sort((a, b) => strength(b) - strength(a));
     return [...shown, ...documents.filter((d) => !isShown(d))];

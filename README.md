@@ -92,9 +92,14 @@ The built web UI ships inside the Python package, so Node.js is only needed to w
 
 ### Windows (including Windows on ARM)
 
-Use a native Python 3.12 from python.org (on a Snapdragon / ARM laptop, the *ARM64* installer). PyTorch publishes
-Windows ARM64 CPU wheels only on its own package index, so add that index when installing; on x64 it is harmless.
-In PowerShell:
+After cloning, double-click **`run_windows.bat`**. On the first run it finds or installs Python 3.12 (the native
+ARM64 build on ARM laptops, through winget), creates `.venv`, installs the packages, downloads SciFact and the
+RoBERTa-large verifier, and builds the index; then, and on every later run, it starts the server and opens the
+browser. Options are passed on, for example `run_windows.bat -Config configs/lite.yaml` or `-Explanation ollama`.
+
+The same steps by hand: use a native Python 3.12 from python.org (on a Snapdragon / ARM laptop, the *ARM64*
+installer). PyTorch publishes Windows ARM64 CPU wheels only on its own package index, so add that index when
+installing; on x64 it is harmless. In PowerShell:
 
 ```powershell
 git clone https://github.com/mardromus/ClaimVerifierAI

@@ -45,6 +45,11 @@ from .text import split_sentences
 logger = logging.getLogger(__name__)
 
 WEB_DIST = Path(__file__).resolve().parent / "web" / "dist"
+# Explicit types for the built UI: on Windows, mimetypes reads the registry, where ".js" is often mapped to
+# text/plain, and browsers refuse to run module scripts served with that type.
+WEB_MEDIA_TYPES = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
+                   ".svg": "image/svg+xml", ".json": "application/json", ".woff2": "font/woff2",
+                   ".woff": "font/woff", ".png": "image/png", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json"}
 Source = Literal["corpus", "europepmc", "pubmed", "custom"]
 
 
@@ -349,7 +354,7 @@ def create_app(verifier=None, config_path: Optional[str] = None, eager: Optional
         out = []
         for path in sorted(Path(get_cfg().reports_dir).glob("*/metrics.json")):
             try:
-                m = json.loads(path.read_text())
+                m = json.loads(path.read_text(encoding="utf-8"))
                 c, r = m["verdict_classification"], m["evidence_retrieval"]
                 out.append({"name": path.parent.name, "num_claims": m["num_claims"],
                             "accuracy": c["accuracy"], "macro_f1": c["macro_f1"],
@@ -367,7 +372,7 @@ def create_app(verifier=None, config_path: Optional[str] = None, eager: Optional
         path = (base / name / "metrics.json").resolve()
         if base not in path.parents or not path.exists():
             raise HTTPException(status_code=404, detail=f"report {name!r} not found")
-        return {"name": name, "metrics": json.loads(path.read_text())}
+        return {"name": name, "metrics": json.loads(path.read_text(encoding="utf-8"))}
 
     app.include_router(router, prefix="/api")
     app.include_router(router, include_in_schema=False)  # backwards-compatible un-prefixed routes
@@ -385,8 +390,8 @@ def create_app(verifier=None, config_path: Optional[str] = None, eager: Optional
                     "npm run build</code>, or use the API at <a href='/docs'>/docs</a>.</p>")
             candidate = (WEB_DIST / path).resolve()
             if path and WEB_DIST in candidate.parents and candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(index, headers={"Cache-Control": "no-cache"})
+                return FileResponse(candidate, media_type=WEB_MEDIA_TYPES.get(candidate.suffix.lower()))
+            return FileResponse(index, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
     return app
 

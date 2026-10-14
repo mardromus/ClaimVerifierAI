@@ -90,6 +90,30 @@ python -m claimverifier serve --config configs/default.yaml   # → http://local
 
 The built web UI ships inside the Python package, so Node.js is only needed to work on the frontend.
 
+### Windows (including Windows on ARM)
+
+Use a native Python 3.12 from python.org (on a Snapdragon / ARM laptop, the *ARM64* installer). PyTorch publishes
+Windows ARM64 CPU wheels only on its own package index, so add that index when installing; on x64 it is harmless.
+In PowerShell:
+
+```powershell
+git clone https://github.com/mardromus/ClaimVerifierAI
+cd ClaimVerifierAI
+py -3.12 -m venv .venv
+.venv\Scripts\python -m pip install --upgrade pip
+.venv\Scripts\python -m pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+.venv\Scripts\python -m claimverifier setup --config configs/verisci.yaml --no-calibrate   # SciFact + index, ~1 min
+.venv\Scripts\python -m claimverifier fetch-verifier                                      # RoBERTa-large, 1.3 GB
+.venv\Scripts\python -m claimverifier serve --config configs/verisci.yaml --set explanation.backend=template
+```
+
+Then open http://localhost:8000. Calling `.venv\Scripts\python` directly avoids PowerShell's script policy for
+`Activate.ps1`. Until `train-rationale` has been run (about an hour on a CPU), `verisci` uses the learned feature
+selector as its evidence fallback; see [Results](#results) for what that costs. For LLM explanations, drop the
+`--set` (Qwen2.5-1.5B is downloaded on first use) or point it at a local Ollama model with
+`--set explanation.backend=ollama --set explanation.ollama_model=qwen2.5:3b`.
+
 ### Configurations
 
 | Config | Retrieval | Evidence selection | Verification | Explanation | Needs |
@@ -155,10 +179,13 @@ benchmarked here. As a reproducibility check, `verisci` re-run with that retrain
 |---|---|---|---|---|---|---|---|---|
 | Majority class (always *Supported*) | – | – | 41.3 | 13.8 | 33.3 | 19.5 | 0.0 | – |
 | `lite` (offline, calibrated on train) | logistic regression | lexical stance model | 52.3 | 47.2 | 46.5 | 45.7 | 21.1 | 24.8 / 21.6 |
+| `verisci` before `train-rationale` (feature fallback) | logistic regression on features | RoBERTa-large (FEVER + SciFact) | 60.0 | 61.6 | 58.6 | 58.7 | 52.1 | 34.2 / 32.4 |
 | `scibert` + lexical stance | **SciBERT** | lexical stance model | 63.3 | 60.6 | 57.7 | 57.9 | 34.6 | 38.9 / 35.5 |
 | `scibert` | **SciBERT** | SciBERT verifier | 66.3 | 63.8 | 64.1 | 63.7 | 47.8 | 40.1 / 36.6 |
 | `default` (zero-shot, not calibrated) | **SciBERT** | DeBERTa-v3 (MNLI + FEVER + ANLI) | 65.3 | **69.9** | 65.5 | 64.7 | **62.5** | 48.9 / 47.8 |
 | **`verisci`** | **SciBERT** | **RoBERTa-large (FEVER + SciFact)** | **69.7** | 69.3 | **67.0** | **67.7** | 58.4 | **52.5 / 48.9** |
+
+The `verisci` row before `train-rationale` is what a fresh install gives until the one-hour SciBERT training has run: the same verifier behind the learned feature selector loses 9 macro-F1 points, so evidence selection, not verification, is the step that most needs a trained model.
 
 The `verisci` verifier was trained by the SciFact authors on FEVER and SciFact train (`claimverifier fetch-verifier`
 downloads it). In this pipeline it works behind our SciBERT evidence selector and BM25 retrieval. The zero-shot

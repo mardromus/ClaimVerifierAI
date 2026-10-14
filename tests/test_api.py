@@ -51,3 +51,19 @@ def test_documents_and_examples(client):
     assert client.get("/documents/999").status_code == 404
     examples = client.get("/examples", params={"n": 3, "seed": 1}).json()
     assert len(examples) == 3 and all(e["label"] in LABELS for e in examples)
+
+
+def test_web_ui_assets_have_explicit_types(client, monkeypatch):
+    """The UI must not depend on the OS MIME registry (Windows often maps .js to text/plain)."""
+    import starlette.responses
+
+    from claimverifier.api import WEB_DIST
+
+    assets = sorted((WEB_DIST / "assets").glob("*.js")) if (WEB_DIST / "assets").exists() else []
+    if not assets:
+        pytest.skip("web UI not built")
+    monkeypatch.setattr(starlette.responses, "guess_type", lambda *a, **k: ("text/plain", None))
+    r = client.get(f"/assets/{assets[0].name}")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/javascript")
+    page = client.get("/")
+    assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")

@@ -31,10 +31,10 @@ CHECKPOINTS = {
 
 def fix_labels(model_dir: str | Path, id2label: dict) -> None:
     path = Path(model_dir) / "config.json"
-    config = json.loads(path.read_text())
+    config = json.loads(path.read_text(encoding="utf-8"))
     config["id2label"] = dict(id2label)
     config["label2id"] = {v: int(k) for k, v in id2label.items()}
-    path.write_text(json.dumps(config, indent=2))
+    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
 def fetch_checkpoint(name: str = "verisci", dest: str | Path = "models/verisci-roberta-large", force: bool = False) -> Path:
